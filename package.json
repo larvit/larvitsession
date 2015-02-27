@@ -1,0 +1,30 @@
+{
+	"author": {
+		"name": "Mikael 'Lilleman' Göransson",
+		"email": "lilleman@larvit.se",
+		"url": "http://github.com/larvit/larvitsession"
+	},
+	"contributors": [],
+	"dependencies": {
+		"uuid": "x"
+	},
+	"description": "Session handling module for node.js",
+	"devDependencies": {
+		"mocha": "x"
+	},
+	"keywords": [
+		"session"
+	],
+	"main": "larvitsession.js",
+	"name": "larvitsession",
+	"repository": {
+		"url": "https://github.com/larvit/larvitsession",
+		"type": "git"
+	},
+	"scripts": {
+		"test": "mocha"
+	},
+	"version": "0.0.1beta",
+	"readmeFilename": "README.md",
+	"license": "MIT"
+}
