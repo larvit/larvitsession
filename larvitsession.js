@@ -115,8 +115,67 @@ function session(request, response, callback) {
 		}
 	}
 
+	/**
+	 * Write session data to database via REPLACE
+	 *
+	 * @param func callback(err)
+	 */
+	function writeToDb(callback) {
+		var sql = 'REPLACE INTO sessions (uuid, json) VALUES(?,?)',
+		    dbFields;
+
+		try {
+			dbFields = [sessionKey, JSON.stringify(sessionData)];
+		} catch(err) {
+			err.message = 'larvitsession: setSessionData() - ' + err.message;
+
+			log.error(err.message);
+		}
+
+		db.query(sql, dbFields, function(err) {
+			if (err) {
+				callback(err);
+				return;
+			}
+
+			callback();
+		});
+	}
+
 	// Initiate request.session
 	request.session = {};
+
+	/**
+	 * Destroy session - remove data from database and delete session cookie
+	 *
+	 * @param func callback(err)
+	 */
+	request.session.destroy = function destroySession(callback) {
+		var sql = 'DELETE FROM sessions WHERE uuid = ?',
+		    dbFields;
+
+		sessionKey = request.cookies.get(cookieName);
+
+		if (sessionKey === undefined) {
+			callback();
+			return;
+		}
+
+		dbFields = [sessionKey];
+
+		db.query(sql, dbFields, function(err) {
+			if (err) {
+				callback(err);
+				return;
+			}
+
+			// Remove the cookie
+			// "If the value is omitted, an outbound header with an expired date is used to delete the cookie."
+			request.cookies.set(cookieName);
+			sessionKey = undefined;
+			callback();
+		});
+	};
 
 	/**
 	 * Get session data
@@ -146,6 +205,27 @@ function session(request, response, callback) {
 	};
 
 	/**
+	 * Remove session data
+	 *
+	 * @param str key - can be omitted to remove all session data
+	 * @param func callback(err)
+	 */
+	request.session.rm = function rmSessionData(key, callback) {
+		getSession(function(err) {
+			if (err) {
+				callback(err);
+				return;
+			}
+
+			delete sessionData[key];
+
+			writeToDb(function(err) {
+				callback(err);
+			});
+		});
+	};
+
+	/**
 	 * Set session data for given key
 	 *
 	 * @param str key
@@ -160,9 +240,6 @@ function session(request, response, callback) {
 		}
 
 		getSession(function(err) {
-			var sql = 'REPLACE INTO sessions (uuid, json) VALUES(?,?)',
-			    dbFields;
-
 			if (err) {
 				callback(err);
 				return;
@@ -170,21 +247,8 @@ function session(request, response, callback) {
 
 			sessionData[key] = value;
 
-			try {
-				dbFields = [sessionKey, JSON.stringify(sessionData)];
-			} catch(err) {
-				err.message = 'larvitsession: setSessionData() - ' + err.message;
-
-				log.error(err.message);
-			}
-
-			db.query(sql, dbFields, function(err) {
-				if (err) {
-					callback(err);
-					return;
-				}
-
-				callback();
+			writeToDb(function(err) {
+				callback(err);
 			});
 		});
 	};
