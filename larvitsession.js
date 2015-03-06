@@ -18,7 +18,7 @@ function session(request, response, callback) {
 	    err;
 
 	if (request.cookies === undefined || response.cookies === undefined) {
-		err = new Error('larvitsession: middleware() - can not find required cookies object on request or response object. Please load https://github.com/pillarjs/cookies into request.cookies');
+		err = new Error('larvitsession: session() - can not find required cookies object on request or response object. Please load https://github.com/pillarjs/cookies into request.cookies');
 		log.warn(err.message);
 		callback(err);
 		return;
