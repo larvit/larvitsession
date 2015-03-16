@@ -5,8 +5,25 @@ var log         = require('winston'),
     uuidLib     = require('uuid'),
     cookieName  = 'session';
 
-// Create database table if not exsists on first instance!!!
+function createDb(callback) {
+	var sql = 'CREATE TABLE IF NOT EXISTS `sessions` (' +
+	          '  `uuid` char(36) COLLATE utf8_unicode_ci NOT NULL,' +
+	          '  `json` varchar(16384) COLLATE utf8_unicode_ci NOT NULL,' +
+	          '  `updated` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,' +
+	          '  PRIMARY KEY (`uuid`),' +
+	          '  KEY `updated` (`updated`)' +
+	          ') ENGINE=MEMORY DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;';
 
+	db.query(sql, function(err) {
+		if (err) {
+			log.error('larvitsession: Could not create database table: ' + err.message);
+		} else {
+			log.verbose('larvitsession: sessions table created if it did not exist');
+		}
+
+		callback(err);
+	});
+}
 
 // Do not forget to remove the oldest session records
 
@@ -257,7 +274,13 @@ function session(request, response, callback) {
 }
 
 exports.middleware = function() {
-	return function(request, response, callback) {
-		session(request, response, callback);
-	};
+	createDb(function(err) {
+		if (err) {
+			throw err;
+		}
+
+		return function(request, response, callback) {
+			session(request, response, callback);
+		};
+	});
 };
