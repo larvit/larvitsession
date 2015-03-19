@@ -6,11 +6,11 @@
 	},
 	"contributors": [],
 	"dependencies": {
-		"uuid": "x"
+		"uuid": "latest"
 	},
 	"description": "Session handling module for node.js",
 	"devDependencies": {
-		"mocha": "x"
+		"mocha": "latest"
 	},
 	"keywords": [
 		"session"
@@ -24,7 +24,7 @@
 	"scripts": {
 		"test": "mocha"
 	},
-	"version": "0.0.4beta",
+	"version": "0.0.5",
 	"readmeFilename": "README.md",
 	"license": "MIT"
 }

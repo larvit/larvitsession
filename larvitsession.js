@@ -270,17 +270,17 @@ function session(request, response, callback) {
 		});
 	};
 
-	callback();
-}
-
-exports.middleware = function() {
 	createDb(function(err) {
 		if (err) {
 			throw err;
 		}
 
-		return function(request, response, callback) {
-			session(request, response, callback);
-		};
+		callback();
 	});
+}
+
+exports.middleware = function() {
+	return function(request, response, callback) {
+		session(request, response, callback);
+	};
 };
