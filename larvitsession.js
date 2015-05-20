@@ -12,7 +12,7 @@ function createDb(callback) {
 	          '  `updated` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,' +
 	          '  PRIMARY KEY (`uuid`),' +
 	          '  KEY `updated` (`updated`)' +
-	          ') ENGINE=MEMORY DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;';
+	          ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;';
 
 	db.query(sql, function(err) {
 		if (err) {
