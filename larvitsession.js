@@ -35,8 +35,8 @@ function session(request, response, callback) {
 	    err;
 
 	if (request.cookies === undefined || response.cookies === undefined) {
-		err = new Error('larvitsession: session() - can not find required cookies object on request or response object. Please load https://github.com/pillarjs/cookies into request.cookies');
-		log.warn(err.message);
+		err = new Error('Can not find required cookies object on request or response object. Please load https://github.com/pillarjs/cookies into request.cookies');
+		log.warn('larvitsession: session() - ' + err.message);
 		callback(err);
 		return;
 	}
@@ -75,7 +75,7 @@ function session(request, response, callback) {
 	 * @param callback(err)
 	 */
 	function getSession(callback) {
-		var sql,
+		var sql = 'SELECT json FROM sessions WHERE uuid = ?',
 		    dbFields;
 
 		log.silly('larvitsession: session() - getSession() - Running');
@@ -98,7 +98,6 @@ function session(request, response, callback) {
 			} else {
 				log.silly('larvitsession: session() - getSession() - A session key was found, validate it and load from database');
 
-				sql      = 'SELECT json FROM sessions WHERE uuid = ?';
 				dbFields = [sessionKey];
 
 				db.query(sql, dbFields, function(err, rows) {
@@ -271,11 +270,7 @@ function session(request, response, callback) {
 	};
 
 	createDb(function(err) {
-		if (err) {
-			throw err;
-		}
-
-		callback();
+		callback(err);
 	});
 }
 
