@@ -130,6 +130,8 @@ function session(request, response, callback) {
 						return;
 					}
 
+					log.debug('larvitsession: session() - getSession() - Fetched data from database: "' + rows[0].json);
+
 					callback();
 				}
 			});
