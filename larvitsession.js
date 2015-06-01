@@ -5,7 +5,7 @@ var log         = require('winston'),
     uuidLib     = require('uuid'),
     cookieName  = 'session';
 
-function createDb(callback) {
+(function createDb() {
 	var sql = 'CREATE TABLE IF NOT EXISTS `sessions` (' +
 	          '  `uuid` char(36) COLLATE ascii_general_ci NOT NULL,' +
 	          '  `json` varchar(15000) COLLATE utf8mb4_unicode_ci NOT NULL,' +
@@ -20,18 +20,13 @@ function createDb(callback) {
 		} else {
 			log.verbose('larvitsession: sessions table created if it did not exist');
 		}
-
-		callback(err);
 	});
-}
-
-// Do not forget to remove the oldest session records
-
-// Validate client uuid, only create server side
+})();
 
 function session(request, response, callback) {
 	var sessionKey,
-	    sessionData = {},
+	    startSessionData,
+	    sessionData,
 	    err;
 
 	if (request.cookies === undefined || response.cookies === undefined) {
@@ -40,6 +35,16 @@ function session(request, response, callback) {
 		callback(err);
 		return;
 	}
+
+	// Wirte to database on response finnish or close
+	response.on('finish', function() {
+		log.verbose('larvitsession: session() - response.on(finish) triggered!');
+		writeToDb();
+	});
+	response.on('close', function() {
+		log.verbose('larvitsession: session() - response.on(close) triggered!');
+		writeToDb();
+	});
 
 	/**
 	 * Set new session key
@@ -64,6 +69,9 @@ function session(request, response, callback) {
 
 			log.debug('larvitsession: session() - getSession() - New sessionKey created and saved in database');
 
+			startSessionData = false; // Set this to make sure to always write the new session data
+			sessionData      = {};
+
 			callback();
 		});
 	}
@@ -87,48 +95,69 @@ function session(request, response, callback) {
 			sessionKey = request.cookies.get(cookieName);
 
 			log.silly('larvitsession: session() - getSession() - sessionKey loaded from cookie: "' + sessionKey + '"');
+		}
 
-			// If the cookies did not know of the session key either, create a new one!
-			if (sessionKey === undefined) {
-				log.silly('larvitsession: session() - getSession() - sessionKey is undefined, run setNewSessionKey()');
+		// If the cookies did not know of the session key either, create a new one!
+		if (sessionKey === undefined) {
+			log.silly('larvitsession: session() - getSession() - sessionKey is undefined, run setNewSessionKey()');
 
-				setNewSessionKey(function(err) {
+			setNewSessionKey(callback);
+		} else {
+			log.silly('larvitsession: session() - getSession() - A session key was found, validate it and load from database');
+
+			dbFields = [sessionKey];
+
+			db.query(sql, dbFields, function(err, rows) {
+				if (err) {
 					callback(err);
-				});
-			} else {
-				log.silly('larvitsession: session() - getSession() - A session key was found, validate it and load from database');
+					return;
+				}
 
-				dbFields = [sessionKey];
+				if (rows.length === 0) {
+					log.info('larvitsession: session() - getSession() - Invalid sessionKey supplied!');
 
-				db.query(sql, dbFields, function(err, rows) {
-					if (err) {
+					setNewSessionKey(callback);
+				} else {
+
+					startSessionData = rows[0].json;
+
+					// Database information found, load them  up
+					try {
+						sessionData = JSON.parse(rows[0].json);
+					} catch(err) {
+						log.error('larvitsession: session() - getSession() - Invalid session data found in database! uuid: "' + sessionKey + '"');
 						callback(err);
 						return;
 					}
 
-					if (rows.length === 0) {
-						log.info('larvitsession: session() - getSession() - Invalid sessionKey supplied!');
-
-						setNewSessionKey(function(err) {
-							callback(err);
-						});
-					} else {
-
-						// Database information found, load them  up
-						try {
-							sessionData = JSON.parse(rows[0].json);
-							callback();
-						} catch(err) {
-							log.error('larvitsession: session() - getSession() - Invalid session data found in database! uuid: "' + sessionKey + '"');
-							callback(err);
-							return;
-						}
-					}
-				});
-			}
-		} else {
-			callback();
+					callback();
+				}
+			});
 		}
+	}
+
+	/**
+	 * Get local session data
+	 *
+	 * @param str key - can be omitted to get all session data
+	 * @param func callback(err, value)
+	 */
+	function getSessionData(key, callback) {
+		var err;
+
+		if (sessionData === undefined) {
+			err = new Error('sessionData is undefined');
+			log.warn('larvitsession: session() - getSessionData() - ' + err.message);
+			callback(err);
+			return;
+		}
+
+		if (key === undefined) {
+			callback(null, sessionData);
+			return;
+		}
+
+		callback(null, sessionData[key]);
 	}
 
 	/**
@@ -140,12 +169,22 @@ function session(request, response, callback) {
 		var sql = 'REPLACE INTO sessions (uuid, json) VALUES(?,?)',
 		    dbFields;
 
+		if (typeof callback !== 'function') {
+			callback = function() {};
+		}
+
 		try {
 			dbFields = [sessionKey, JSON.stringify(sessionData)];
 		} catch(err) {
-			err.message = 'larvitsession: setSessionData() - ' + err.message;
+			err.message = 'larvitsession: session() - writeToDb() - ' + err.message;
 
 			log.error(err.message);
+		}
+
+		if (dbFields[1] === startSessionData) {
+			log.debug('larvitsession: larvitsession: session() - writeToDb() - session data is not different from database, do not rewrite it');
+			callback();
+			return;
 		}
 
 		db.query(sql, dbFields, function(err) {
@@ -153,6 +192,9 @@ function session(request, response, callback) {
 				callback(err);
 				return;
 			}
+
+			// Clean up old entries
+			db.query('DELETE FROM sessions WHERE updated < DATE_SUB(NOW(), INTERVAL 10 DAY);');
 
 			callback();
 		});
@@ -166,9 +208,13 @@ function session(request, response, callback) {
 	 *
 	 * @param func callback(err)
 	 */
-	request.session.destroy = function destroySession(callback) {
+	request.session.destroy = function(callback) {
 		var sql = 'DELETE FROM sessions WHERE uuid = ?',
 		    dbFields;
+
+		if (typeof callback !== 'function') {
+			callback = function() {};
+		}
 
 		sessionKey = request.cookies.get(cookieName);
 
@@ -199,24 +245,19 @@ function session(request, response, callback) {
 	 * @param str key - can be omitted to get all session data
 	 * @param func callback(err, value)
 	 */
-	request.session.get = function getSessionData(key, callback) {
+	request.session.get = function(key, callback) {
+		if (sessionData !== undefined) {
+			getSessionData(key, callback);
+			return;
+		}
+
 		getSession(function(err) {
 			if (err) {
 				callback(err);
 				return;
 			}
 
-			if (sessionData === undefined) {
-				callback(null);
-				return;
-			}
-
-			if (key === undefined) {
-				callback(null, sessionData);
-				return;
-			}
-
-			callback(null, sessionData[key]);
+			getSessionData(key, callback);
 		});
 	};
 
@@ -226,7 +267,11 @@ function session(request, response, callback) {
 	 * @param str key - can be omitted to remove all session data
 	 * @param func callback(err)
 	 */
-	request.session.rm = function rmSessionData(key, callback) {
+	request.session.rm = function(key, callback) {
+		if (typeof callback !== 'function') {
+			callback = function() {};
+		}
+
 		getSession(function(err) {
 			if (err) {
 				callback(err);
@@ -234,10 +279,6 @@ function session(request, response, callback) {
 			}
 
 			delete sessionData[key];
-
-			writeToDb(function(err) {
-				callback(err);
-			});
 		});
 	};
 
@@ -248,10 +289,10 @@ function session(request, response, callback) {
 	 * @param mixed value - serializeable json
 	 * @param func callback(err)
 	 */
-	request.session.set = function setSessionData(key, value, callback) {
+	request.session.set = function(key, value, callback) {
 		if (typeof callback !== 'function') {
 			callback = function() {
-				log.silly('larvitsession: session() - request.session.get() - no valid callback sent');
+				log.silly('larvitsession: session() - request.session.set() - no valid callback sent');
 			};
 		}
 
@@ -261,17 +302,13 @@ function session(request, response, callback) {
 				return;
 			}
 
+			log.silly('larvitsession: session() - request.session.set() - Setting "' + key + '" to "' + value + '"');
 			sessionData[key] = value;
-
-			writeToDb(function(err) {
-				callback(err);
-			});
+			callback();
 		});
 	};
 
-	createDb(function(err) {
-		callback(err);
-	});
+	callback();
 }
 
 exports.middleware = function() {
