@@ -29,7 +29,7 @@ The given example sets up larvitsession as a middleware to larvitbase. At the mo
     	"pubFilePath": "./public"
     };
 
-    serverConf.middleware   = [
+    serverConf.middleware = [
     	require('cookies').express(),
     	require('larvitsession').middleware() // Important that this is ran after the cookie middleware
     ];
@@ -48,25 +48,7 @@ Now in a controller we can use the session like this:
     			throw err;
     		}
 
-    		// Set a new key/value
-    		request.session.set('foo', 'bar', function(err) {
-    			if (err) {
-    				throw err;
-    			}
-
-    			// Get the previously set key/value
-    			request.session.get('foo', function(err, value) {
-    				if (err) {
-    					throw err;
-    				}
-
-    				// Remove the key again
-    				request.session.rm('foo', function(err) {
-    					if (err) {
-    						throw err;
-    					}
-    				});
-    			});
-    		});
+    		// Set a new key/value - this will be saved in database and can be retreived on page reload
+    		request.session.data.foo = 'bar';
     	});
     };

@@ -26,8 +26,10 @@ var log         = require('winston'),
 function session(request, response, callback) {
 	var sessionKey,
 	    startSessionData,
-	    sessionData,
 	    err;
+
+	// Initiate request.session
+	request.session = {'data': {}};
 
 	if (request.cookies === undefined || response.cookies === undefined) {
 		err = new Error('Can not find required cookies object on request or response object. Please load https://github.com/pillarjs/cookies into request.cookies');
@@ -69,8 +71,8 @@ function session(request, response, callback) {
 
 			log.debug('larvitsession: session() - getSession() - New sessionKey created and saved in database');
 
-			startSessionData = false; // Set this to make sure to always write the new session data
-			sessionData      = {};
+			startSessionData     = false; // Set this to make sure to always write the new session data
+			request.session.data = {};
 
 			callback();
 		});
@@ -123,7 +125,7 @@ function session(request, response, callback) {
 
 					// Database information found, load them  up
 					try {
-						sessionData = JSON.parse(rows[0].json);
+						request.session.data = JSON.parse(rows[0].json);
 					} catch(err) {
 						log.error('larvitsession: session() - getSession() - Invalid session data found in database! uuid: "' + sessionKey + '"');
 						callback(err);
@@ -136,30 +138,6 @@ function session(request, response, callback) {
 				}
 			});
 		}
-	}
-
-	/**
-	 * Get local session data
-	 *
-	 * @param str key - can be omitted to get all session data
-	 * @param func callback(err, value)
-	 */
-	function getSessionData(key, callback) {
-		var err;
-
-		if (sessionData === undefined) {
-			err = new Error('sessionData is undefined');
-			log.warn('larvitsession: session() - getSessionData() - ' + err.message);
-			callback(err);
-			return;
-		}
-
-		if (key === undefined) {
-			callback(null, sessionData);
-			return;
-		}
-
-		callback(null, sessionData[key]);
 	}
 
 	/**
@@ -176,7 +154,7 @@ function session(request, response, callback) {
 		}
 
 		try {
-			dbFields = [sessionKey, JSON.stringify(sessionData)];
+			dbFields = [sessionKey, JSON.stringify(request.session.data)];
 		} catch(err) {
 			err.message = 'larvitsession: session() - writeToDb() - ' + err.message;
 
@@ -201,9 +179,6 @@ function session(request, response, callback) {
 			callback();
 		});
 	}
-
-	// Initiate request.session
-	request.session = {};
 
 	/**
 	 * Destroy session - remove data from database and delete session cookie
@@ -241,76 +216,8 @@ function session(request, response, callback) {
 		});
 	};
 
-	/**
-	 * Get session data
-	 *
-	 * @param str key - can be omitted to get all session data
-	 * @param func callback(err, value)
-	 */
-	request.session.get = function(key, callback) {
-		if (sessionData !== undefined) {
-			getSessionData(key, callback);
-			return;
-		}
-
-		getSession(function(err) {
-			if (err) {
-				callback(err);
-				return;
-			}
-
-			getSessionData(key, callback);
-		});
-	};
-
-	/**
-	 * Remove session data
-	 *
-	 * @param str key - can be omitted to remove all session data
-	 * @param func callback(err)
-	 */
-	request.session.rm = function(key, callback) {
-		if (typeof callback !== 'function') {
-			callback = function() {};
-		}
-
-		getSession(function(err) {
-			if (err) {
-				callback(err);
-				return;
-			}
-
-			delete sessionData[key];
-		});
-	};
-
-	/**
-	 * Set session data for given key
-	 *
-	 * @param str key
-	 * @param mixed value - serializeable json
-	 * @param func callback(err)
-	 */
-	request.session.set = function(key, value, callback) {
-		if (typeof callback !== 'function') {
-			callback = function() {
-				log.silly('larvitsession: session() - request.session.set() - no valid callback sent');
-			};
-		}
-
-		getSession(function(err) {
-			if (err) {
-				callback(err);
-				return;
-			}
-
-			log.silly('larvitsession: session() - request.session.set() - Setting "' + key + '" to "' + value + '"');
-			sessionData[key] = value;
-			callback();
-		});
-	};
-
-	callback();
+	// Load session by default
+	getSession(callback);
 }
 
 exports.middleware = function() {
