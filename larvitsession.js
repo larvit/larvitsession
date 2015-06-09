@@ -40,11 +40,11 @@ function session(request, response, callback) {
 
 	// Wirte to database on response finnish or close
 	response.on('finish', function() {
-		log.verbose('larvitsession: session() - response.on(finish) triggered!');
+		log.silly('larvitsession: session() - response.on(finish) triggered!');
 		writeToDb();
 	});
 	response.on('close', function() {
-		log.verbose('larvitsession: session() - response.on(close) triggered!');
+		log.silly('larvitsession: session() - response.on(close) triggered!');
 		writeToDb();
 	});
 
