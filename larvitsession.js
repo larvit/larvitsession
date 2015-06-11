@@ -3,7 +3,8 @@
 var log         = require('winston'),
     db          = require('larvitdb'),
     uuidLib     = require('uuid'),
-    cookieName  = 'session';
+    cookieName  = 'session',
+    dbCreated   = false;
 
 (function createDb() {
 	var sql = 'CREATE TABLE IF NOT EXISTS `sessions` (' +
@@ -19,6 +20,7 @@ var log         = require('winston'),
 			log.error('larvitsession: Could not create database table: ' + err.message);
 		} else {
 			log.verbose('larvitsession: sessions table created if it did not exist');
+			dbCreated = true;
 		}
 	});
 })();
@@ -87,6 +89,16 @@ function session(request, response, callback) {
 	function getSession(callback) {
 		var sql = 'SELECT json FROM sessions WHERE uuid = ?',
 		    dbFields;
+
+		if (dbCreated === false) {
+			log.verbose('larvitsession: session() - getSession() - Database table is not yet created, postponing execution of this function.');
+
+			setTimeout(function() {
+				getSession(callback);
+			}, 10);
+
+			return;
+		}
 
 		log.silly('larvitsession: session() - getSession() - Running');
 
