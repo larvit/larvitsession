@@ -26,9 +26,7 @@ var log         = require('winston'),
 })();
 
 function session(request, response, callback) {
-	var sessionKey,
-	    startSessionData,
-	    err;
+	var err;
 
 	// Initiate request.session
 	request.session = {'data': {}};
@@ -40,16 +38,6 @@ function session(request, response, callback) {
 		return;
 	}
 
-	// Wirte to database on response finnish or close
-	response.on('finish', function() {
-		log.silly('larvitsession: session() - response.on(finish) triggered!');
-		writeToDb();
-	});
-	response.on('close', function() {
-		log.silly('larvitsession: session() - response.on(close) triggered!');
-		writeToDb();
-	});
-
 	/**
 	 * Set new session key
 	 * Will create a new random sessionKey (uuid) and store it to database, cookie and local variable "sessionKey"
@@ -60,10 +48,10 @@ function session(request, response, callback) {
 		var sql = 'INSERT INTO sessions (uuid, json) VALUES(?,?)',
 		    dbFields;
 
-		sessionKey = uuidLib.v4();
-		dbFields   = [sessionKey, JSON.stringify({})];
+		request.sessionKey = uuidLib.v4();
+		dbFields           = [request.sessionKey, JSON.stringify({})];
 
-		response.cookies.set(cookieName, sessionKey);
+		response.cookies.set(cookieName, request.sessionKey);
 
 		db.query(sql, dbFields, function(err) {
 			if (err) {
@@ -73,8 +61,8 @@ function session(request, response, callback) {
 
 			log.debug('larvitsession: session() - getSession() - New sessionKey created and saved in database');
 
-			startSessionData     = false; // Set this to make sure to always write the new session data
-			request.session.data = {};
+			request.startSessionData = false; // Set this to make sure to always write the new session data
+			request.session.data     = {};
 
 			callback();
 		});
@@ -103,23 +91,23 @@ function session(request, response, callback) {
 		log.silly('larvitsession: session() - getSession() - Running');
 
 		// If sessionKey is not yet defined, try to get it from the cookies
-		if (sessionKey === undefined) {
+		if (request.sessionKey === undefined) {
 			log.silly('larvitsession: session() - getSession() - No sessionKey found, trying to get one');
 
-			sessionKey = request.cookies.get(cookieName);
+			request.sessionKey = request.cookies.get(cookieName);
 
-			log.silly('larvitsession: session() - getSession() - sessionKey loaded from cookie: "' + sessionKey + '"');
+			log.silly('larvitsession: session() - getSession() - sessionKey loaded from cookie: "' + request.sessionKey + '"');
 		}
 
 		// If the cookies did not know of the session key either, create a new one!
-		if (sessionKey === undefined) {
+		if (request.sessionKey === undefined) {
 			log.silly('larvitsession: session() - getSession() - sessionKey is undefined, run setNewSessionKey()');
 
 			setNewSessionKey(callback);
 		} else {
 			log.silly('larvitsession: session() - getSession() - A session key was found, validate it and load from database');
 
-			dbFields = [sessionKey];
+			dbFields = [request.sessionKey];
 
 			db.query(sql, dbFields, function(err, rows) {
 				if (err) {
@@ -133,13 +121,13 @@ function session(request, response, callback) {
 					setNewSessionKey(callback);
 				} else {
 
-					startSessionData = rows[0].json;
+					request.startSessionData = rows[0].json;
 
 					// Database information found, load them  up
 					try {
 						request.session.data = JSON.parse(rows[0].json);
 					} catch(err) {
-						log.error('larvitsession: session() - getSession() - Invalid session data found in database! uuid: "' + sessionKey + '"');
+						log.error('larvitsession: session() - getSession() - Invalid session data found in database! uuid: "' + request.sessionKey + '"');
 						callback(err);
 						return;
 					}
@@ -150,46 +138,6 @@ function session(request, response, callback) {
 				}
 			});
 		}
-	}
-
-	/**
-	 * Write session data to database via REPLACE
-	 *
-	 * @param func callback(err)
-	 */
-	function writeToDb(callback) {
-		var sql = 'REPLACE INTO sessions (uuid, json) VALUES(?,?)',
-		    dbFields;
-
-		if (typeof callback !== 'function') {
-			callback = function() {};
-		}
-
-		try {
-			dbFields = [sessionKey, JSON.stringify(request.session.data)];
-		} catch(err) {
-			err.message = 'larvitsession: session() - writeToDb() - ' + err.message;
-
-			log.error(err.message);
-		}
-
-		if (dbFields[1] === startSessionData) {
-			log.debug('larvitsession: larvitsession: session() - writeToDb() - session data is not different from database, do not rewrite it');
-			callback();
-			return;
-		}
-
-		db.query(sql, dbFields, function(err) {
-			if (err) {
-				callback(err);
-				return;
-			}
-
-			// Clean up old entries
-			db.query('DELETE FROM sessions WHERE updated < DATE_SUB(NOW(), INTERVAL 10 DAY);');
-
-			callback();
-		});
 	}
 
 	/**
@@ -205,14 +153,14 @@ function session(request, response, callback) {
 			callback = function() {};
 		}
 
-		sessionKey = request.cookies.get(cookieName);
+		request.sessionKey = request.cookies.get(cookieName);
 
-		if (sessionKey === undefined) {
+		if (request.sessionKey === undefined) {
 			callback();
 			return;
 		}
 
-		dbFields = [sessionKey];
+		dbFields = [request.sessionKey];
 
 		db.query(sql, dbFields, function(err) {
 			if (err) {
@@ -223,7 +171,7 @@ function session(request, response, callback) {
 			// Remove the cookie
 			// "If the value is omitted, an outbound header with an expired date is used to delete the cookie."
 			request.cookies.set(cookieName);
-			sessionKey = undefined;
+			request.sessionKey = undefined;
 			callback();
 		});
 	};
@@ -232,8 +180,40 @@ function session(request, response, callback) {
 	getSession(callback);
 }
 
+function writeToDb(request, response, data, callback) {
+	var sql = 'REPLACE INTO sessions (uuid, json) VALUES(?,?)',
+	    dbFields;
+
+	try {
+		dbFields = [request.sessionKey, JSON.stringify(request.session.data)];
+	} catch(err) {
+		log.error('larvitsession: session() - writeToDb() - ' + err.message);
+		callback(err, request, response, data);
+		return;
+	}
+
+	if (dbFields[1] === request.startSessionData) {
+		log.debug('larvitsession: larvitsession: session() - writeToDb() - session data is not different from database, do not rewrite it');
+		callback(null, request, response, data);
+		return;
+	}
+
+	db.query(sql, dbFields, function(err) {
+		callback(err, request, response, data);
+
+		// Clean up old entries
+		db.query('DELETE FROM sessions WHERE updated < DATE_SUB(NOW(), INTERVAL 10 DAY);');
+	});
+}
+
 exports.middleware = function() {
 	return function(request, response, callback) {
 		session(request, response, callback);
+	};
+};
+
+exports.afterware = function() {
+	return function(request, response, data, callback) {
+		writeToDb(request, response, data, callback);
 	};
 };

@@ -33,6 +33,9 @@ The given example sets up larvitsession as a middleware to larvitbase. At the mo
     	require('cookies').express(),
     	require('larvitsession').middleware() // Important that this is ran after the cookie middleware
     ];
+    serverConf.afterware = [
+    	require('larvitsession').afterware()
+    ]
 
     require('larvitbase')(conf);
 
