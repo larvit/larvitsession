@@ -207,13 +207,9 @@ function writeToDb(request, response, data, callback) {
 }
 
 exports.middleware = function() {
-	return function(request, response, callback) {
-		session(request, response, callback);
-	};
+	return session;
 };
 
 exports.afterware = function() {
-	return function(request, response, data, callback) {
-		writeToDb(request, response, data, callback);
-	};
+	return writeToDb;
 };
