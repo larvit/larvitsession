@@ -6,7 +6,7 @@ var log         = require('winston'),
     cookieName  = 'session',
     dbCreated   = false;
 
-(function createDb() {
+db.ready(function() {
 	var sql = 'CREATE TABLE IF NOT EXISTS `sessions` (' +
 	          '  `uuid` char(36) COLLATE ascii_general_ci NOT NULL,' +
 	          '  `json` varchar(15000) COLLATE utf8mb4_unicode_ci NOT NULL,' +
@@ -23,18 +23,18 @@ var log         = require('winston'),
 			dbCreated = true;
 		}
 	});
-})();
+});
 
-function session(request, response, callback) {
+function session(req, res, cb) {
 	var err;
 
-	// Initiate request.session
-	request.session = {'data': {}};
+	// Initiate req.session
+	req.session = {'data': {}};
 
-	if (request.cookies === undefined || response.cookies === undefined) {
-		err = new Error('Can not find required cookies object on request or response object. Please load https://github.com/pillarjs/cookies into request.cookies');
+	if (req.cookies === undefined || res.cookies === undefined) {
+		err = new Error('Can not find required cookies object on req or res object. Please load https://github.com/pillarjs/cookies into req.cookies');
 		log.warn('larvitsession: session() - ' + err.message);
-		callback(err);
+		cb(err);
 		return;
 	}
 
@@ -42,29 +42,29 @@ function session(request, response, callback) {
 	 * Set new session key
 	 * Will create a new random sessionKey (uuid) and store it to database, cookie and local variable "sessionKey"
 	 *
-	 * @param func callback(err)
+	 * @param func cb(err)
 	 */
-	function setNewSessionKey(callback) {
+	function setNewSessionKey(cb) {
 		var sql = 'INSERT INTO sessions (uuid, json) VALUES(?,?)',
 		    dbFields;
 
-		request.sessionKey = uuidLib.v4();
-		dbFields           = [request.sessionKey, JSON.stringify({})];
+		req.sessionKey = uuidLib.v4();
+		dbFields       = [req.sessionKey, JSON.stringify({})];
 
-		response.cookies.set(cookieName, request.sessionKey);
+		res.cookies.set(cookieName, req.sessionKey);
 
 		db.query(sql, dbFields, function(err) {
 			if (err) {
-				callback(err);
+				cb(err);
 				return;
 			}
 
 			log.debug('larvitsession: session() - getSession() - New sessionKey created and saved in database');
 
-			request.startSessionData = false; // Set this to make sure to always write the new session data
-			request.session.data     = {};
+			req.startSessionData = false; // Set this to make sure to always write the new session data
+			req.session.data     = {};
 
-			callback();
+			cb();
 		});
 	}
 
@@ -72,9 +72,9 @@ function session(request, response, callback) {
 	 * Get session key and data from cookie and database or create new if it was missing either in cookie or database
 	 * Will set the sessionKey in the outer scope
 	 *
-	 * @param callback(err)
+	 * @param cb(err)
 	 */
-	function getSession(callback) {
+	function getSession(cb) {
 		var sql = 'SELECT json FROM sessions WHERE uuid = ?',
 		    dbFields;
 
@@ -82,7 +82,7 @@ function session(request, response, callback) {
 			log.verbose('larvitsession: session() - getSession() - Database table is not yet created, postponing execution of this function.');
 
 			setTimeout(function() {
-				getSession(callback);
+				getSession(cb);
 			}, 10);
 
 			return;
@@ -91,50 +91,50 @@ function session(request, response, callback) {
 		log.silly('larvitsession: session() - getSession() - Running');
 
 		// If sessionKey is not yet defined, try to get it from the cookies
-		if (request.sessionKey === undefined) {
+		if (req.sessionKey === undefined) {
 			log.silly('larvitsession: session() - getSession() - No sessionKey found, trying to get one');
 
-			request.sessionKey = request.cookies.get(cookieName);
+			req.sessionKey = req.cookies.get(cookieName);
 
-			log.silly('larvitsession: session() - getSession() - sessionKey loaded from cookie: "' + request.sessionKey + '"');
+			log.silly('larvitsession: session() - getSession() - sessionKey loaded from cookie: "' + req.sessionKey + '"');
 		}
 
 		// If the cookies did not know of the session key either, create a new one!
-		if (request.sessionKey === undefined) {
+		if (req.sessionKey === undefined) {
 			log.silly('larvitsession: session() - getSession() - sessionKey is undefined, run setNewSessionKey()');
 
-			setNewSessionKey(callback);
+			setNewSessionKey(cb);
 		} else {
 			log.silly('larvitsession: session() - getSession() - A session key was found, validate it and load from database');
 
-			dbFields = [request.sessionKey];
+			dbFields = [req.sessionKey];
 
 			db.query(sql, dbFields, function(err, rows) {
 				if (err) {
-					callback(err);
+					cb(err);
 					return;
 				}
 
 				if (rows.length === 0) {
 					log.info('larvitsession: session() - getSession() - Invalid sessionKey supplied!');
 
-					setNewSessionKey(callback);
+					setNewSessionKey(cb);
 				} else {
 
-					request.startSessionData = rows[0].json;
+					req.startSessionData = rows[0].json;
 
 					// Database information found, load them  up
 					try {
-						request.session.data = JSON.parse(rows[0].json);
+						req.session.data = JSON.parse(rows[0].json);
 					} catch(err) {
-						log.error('larvitsession: session() - getSession() - Invalid session data found in database! uuid: "' + request.sessionKey + '"');
-						callback(err);
+						log.error('larvitsession: session() - getSession() - Invalid session data found in database! uuid: "' + req.sessionKey + '"');
+						cb(err);
 						return;
 					}
 
 					log.debug('larvitsession: session() - getSession() - Fetched data from database: "' + rows[0].json);
 
-					callback();
+					cb();
 				}
 			});
 		}
@@ -143,63 +143,69 @@ function session(request, response, callback) {
 	/**
 	 * Destroy session - remove data from database and delete session cookie
 	 *
-	 * @param func callback(err)
+	 * @param func cb(err)
 	 */
-	request.session.destroy = function(callback) {
+	req.session.destroy = function(cb) {
 		var sql = 'DELETE FROM sessions WHERE uuid = ?',
 		    dbFields;
 
-		if (typeof callback !== 'function') {
-			callback = function() {};
+		if (typeof cb !== 'function') {
+			cb = function() {};
 		}
 
-		request.sessionKey = request.cookies.get(cookieName);
+		req.sessionKey = req.cookies.get(cookieName);
 
-		if (request.sessionKey === undefined) {
-			callback();
+		if (req.sessionKey === undefined) {
+			cb();
 			return;
 		}
 
-		dbFields = [request.sessionKey];
+		dbFields = [req.sessionKey];
 
 		db.query(sql, dbFields, function(err) {
 			if (err) {
-				callback(err);
+				cb(err);
 				return;
 			}
 
 			// Remove the cookie
 			// "If the value is omitted, an outbound header with an expired date is used to delete the cookie."
-			request.cookies.set(cookieName);
-			request.sessionKey = undefined;
-			callback();
+			req.cookies.set(cookieName);
+			req.sessionKey = undefined;
+			cb();
 		});
 	};
 
 	// Load session by default
-	getSession(callback);
+	getSession(cb);
 }
 
-function writeToDb(request, response, data, callback) {
+function writeToDb(req, res, data, cb) {
 	var sql = 'REPLACE INTO sessions (uuid, json) VALUES(?,?)',
 	    dbFields;
 
 	try {
-		dbFields = [request.sessionKey, JSON.stringify(request.session.data)];
+		dbFields = [req.sessionKey, JSON.stringify(req.session.data)];
 	} catch(err) {
-		log.error('larvitsession: session() - writeToDb() - ' + err.message);
-		callback(err, request, response, data);
+		log.error('larvitsession: writeToDb() - ' + err.message);
+		cb(err, req, res, data);
 		return;
 	}
 
-	if (dbFields[1] === request.startSessionData) {
-		log.debug('larvitsession: larvitsession: session() - writeToDb() - session data is not different from database, do not rewrite it');
-		callback(null, request, response, data);
+	if (dbFields[1] === req.startSessionData) {
+		log.debug('larvitsession: writeToDb() - Session data is not different from database, do not rewrite it');
+		cb(null, req, res, data);
+		return;
+	}
+
+	if (dbFields[1] === '{}') {
+		log.debug('larvitsession: writeToDb() - Empty session data, remove completely from database not to waste space');
+		db.query('DELETE FROM sessions WHERE uuid = ?', [req.sessionKey]);
 		return;
 	}
 
 	db.query(sql, dbFields, function(err) {
-		callback(err, request, response, data);
+		cb(err, req, res, data);
 
 		// Clean up old entries
 		db.query('DELETE FROM sessions WHERE updated < DATE_SUB(NOW(), INTERVAL 10 DAY);');
