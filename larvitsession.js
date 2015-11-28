@@ -200,7 +200,7 @@ function writeToDb(req, res, data, cb) {
 
 	if (dbFields[1] === '{}') {
 		log.debug('larvitsession: writeToDb() - Empty session data, remove completely from database not to waste space');
-		db.query('DELETE FROM sessions WHERE uuid = ?', [req.sessionKey]);
+		db.query('DELETE FROM sessions WHERE uuid = ?', [req.sessionKey], cb);
 		return;
 	}
 

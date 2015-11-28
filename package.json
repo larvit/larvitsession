@@ -24,7 +24,7 @@
 	"scripts": {
 		"test": "mocha"
 	},
-	"version": "0.0.15",
+	"version": "0.0.16",
 	"readmeFilename": "README.md",
 	"license": "MIT"
 }
