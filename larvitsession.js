@@ -116,7 +116,8 @@ function session(req, res, cb) {
 				}
 
 				if (rows.length === 0) {
-					log.info('larvitsession: session() - getSession() - Invalid sessionKey supplied!');
+					// This might be OK since it might have been cleared on an earlier call. Good to log, but no need to scream. :)
+					log.verbose('larvitsession: session() - getSession() - Invalid sessionKey supplied!');
 
 					setNewSessionKey(cb);
 				} else {
@@ -192,15 +193,15 @@ function writeToDb(req, res, data, cb) {
 		return;
 	}
 
-	if (dbFields[1] === req.startSessionData) {
-		log.debug('larvitsession: writeToDb() - Session data is not different from database, do not rewrite it');
-		cb(null, req, res, data);
-		return;
-	}
-
 	if (dbFields[1] === '{}') {
 		log.debug('larvitsession: writeToDb() - Empty session data, remove completely from database not to waste space');
 		db.query('DELETE FROM sessions WHERE uuid = ?', [req.sessionKey], cb);
+		return;
+	}
+
+	if (dbFields[1] === req.startSessionData) {
+		log.debug('larvitsession: writeToDb() - Session data is not different from database, do not rewrite it');
+		cb(null, req, res, data);
 		return;
 	}
 
