@@ -6,13 +6,20 @@
   },
   "contributors": [],
   "dependencies": {
-    "larvitdb": "^0.4.4",
+    "larvitdb": "^1.0.0",
+    "larvitdbmigration": "^1.0.0",
     "uuid": "^2.0.1",
-    "winston": "^2.1.1"
+    "winston": "^2.2.0"
   },
   "description": "Session handling module for node.js",
   "devDependencies": {
-    "mocha": "^2.4.2"
+    "cookies": "^0.6.1",
+    "eslint": "^2.7.0",
+    "freeport": "^1.0.5",
+    "larvitbase": "^1.0.0",
+    "mocha": "^2.4.5",
+    "pre-git": "^3.8.3",
+    "request": "^2.70.0"
   },
   "keywords": [
     "session"
@@ -26,7 +33,20 @@
   "scripts": {
     "test": "mocha"
   },
-  "version": "0.1.5",
+  "pre-commit": [
+    "npm test",
+    "eslint ./"
+  ],
+  "version": "0.2.0",
   "readmeFilename": "README.md",
-  "license": "MIT"
+  "license": "MIT",
+  "config": {
+    "pre-git": {
+      "commit-msg": [],
+      "pre-commit": [],
+      "pre-push": [],
+      "post-commit": [],
+      "post-merge": []
+    }
+  }
 }

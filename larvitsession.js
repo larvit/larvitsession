@@ -1,10 +1,21 @@
 'use strict';
 
-var log         = require('winston'),
-    db          = require('larvitdb'),
-    uuidLib     = require('uuid'),
-    cookieName  = 'session',
-    dbCreated   = false;
+const dbMigration = require('larvitdbmigration'),
+      cookieName  = 'session',
+      uuidLib     = require('uuid'),
+      log         = require('winston'),
+      db          = require('larvitdb');
+
+let dbCreated = false;
+
+dbMigration({'tableName': 'sessions_db_version'})(function(err) {
+	if (err) {
+		log.error('larvitsession: Could not run database migrations: ' + err.message);
+	} else {
+		log.verbose('larvitsession: Database migrations ran successfully');
+		dbCreated = true;
+	}
+});
 
 db.ready(function() {
 	var sql = 'CREATE TABLE IF NOT EXISTS `sessions` (' +
