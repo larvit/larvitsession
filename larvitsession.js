@@ -8,32 +8,13 @@ const dbMigration = require('larvitdbmigration'),
 
 let dbCreated = false;
 
-dbMigration({'tableName': 'sessions_db_version'})(function(err) {
+dbMigration({'tableName': 'sessions_db_version', 'migrationScriptsPath': __dirname + '/dbmigration'})(function(err) {
 	if (err) {
 		log.error('larvitsession: Could not run database migrations: ' + err.message);
 	} else {
 		log.verbose('larvitsession: Database migrations ran successfully');
 		dbCreated = true;
 	}
-});
-
-db.ready(function() {
-	var sql = 'CREATE TABLE IF NOT EXISTS `sessions` (' +
-	          '  `uuid` char(36) COLLATE ascii_general_ci NOT NULL,' +
-	          '  `json` varchar(15000) COLLATE utf8mb4_unicode_ci NOT NULL,' +
-	          '  `updated` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,' +
-	          '  PRIMARY KEY (`uuid`),' +
-	          '  KEY `updated` (`updated`)' +
-	          ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;';
-
-	db.query(sql, function(err) {
-		if (err) {
-			log.error('larvitsession: Could not create database table: ' + err.message);
-		} else {
-			log.verbose('larvitsession: sessions table created if it did not exist');
-			dbCreated = true;
-		}
-	});
 });
 
 function session(req, res, cb) {

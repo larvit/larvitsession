@@ -110,7 +110,7 @@ describe('Basics', function() {
 		});
 	});
 
-	it('yo', function(done) {
+	it('Testing if sessions table got created', function(done) {
 		request('http://localhost:' + httpPort, function(err) {
 			assert( ! err, 'err should be negative');
 
