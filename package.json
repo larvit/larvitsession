@@ -14,11 +14,10 @@
   "description": "Session handling module for node.js",
   "devDependencies": {
     "cookies": "^0.6.1",
-    "eslint": "^2.7.0",
+    "eslint": "^3.5.0",
     "freeport": "^1.0.5",
     "larvitbase": "^1.0.2",
-    "mocha": "^2.4.5",
-    "pre-git": "^3.8.3",
+    "mocha": "^3.0.2",
     "request": "^2.70.0"
   },
   "keywords": [
@@ -33,20 +32,7 @@
   "scripts": {
     "test": "mocha"
   },
-  "pre-commit": [
-    "npm test",
-    "eslint ./"
-  ],
-  "version": "1.0.0",
+  "version": "1.1.0",
   "readmeFilename": "README.md",
-  "license": "MIT",
-  "config": {
-    "pre-git": {
-      "commit-msg": [],
-      "pre-commit": [],
-      "pre-push": [],
-      "post-commit": [],
-      "post-merge": []
-    }
-  }
+  "license": "MIT"
 }

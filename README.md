@@ -15,33 +15,33 @@ npm i larvitsession
 The given example sets up larvitsession as a middleware to larvitbase. At the moment a database access is required via larvitdb.
 
 ```javascript
-const lsession = require('larvitsession'),
-      db       = require('larvitdb');
+const	lSession	= require('larvitsession'),
+	db	= require('larvitdb');
 
 let conf;
 
 db.setup({
-	"connectionLimit":   10,
-	"socketPath":        "/var/run/mysqld/mysqld.sock",
-	"user":              "foo",
-	"password":          "bar",
-	"charset":           "utf8mb4_general_ci",
-	"supportBigNumbers": true,
-	"database":          "dbname"
+	"connectionLimit":	10,
+	"socketPath":	"/var/run/mysqld/mysqld.sock",
+	"user":	"foo",
+	"password":	"bar",
+	"charset":	"utf8mb4_general_ci",
+	"supportBigNumbers":	true,
+	"database":	"dbname"
 });
 
 conf = {
-	"port": 8001,
-	"host": "127.0.0.1",
-	"pubFilePath": "./public"
+	"port":	8001,
+	"host":	"127.0.0.1",
+	"pubFilePath":	"./public"
 };
 
 conf.middleware = [
 	require('cookies').express(),
-	lsession.middleware() // Important that this is ran after the cookie middleware
+	lSession.middleware() // Important that this is ran after the cookie middleware
 ];
 conf.afterware = [
-	lsession.afterware()
+	lSession.afterware()
 ]
 
 require('larvitbase')(conf);

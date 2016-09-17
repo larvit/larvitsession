@@ -1,21 +1,21 @@
 'use strict';
 
-const freeport = require('freeport'),
-      request  = require('request').defaults({jar: true}),
-      cookies  = require('cookies'),
-      assert   = require('assert'),
-      lbase    = require('larvitbase'),
-      log      = require('winston'),
-      fs       = require('fs'),
-      db       = require('larvitdb');
+const	freeport	= require('freeport'),
+	request	= require('request').defaults({jar: true}),
+	cookies	= require('cookies'),
+	assert	= require('assert'),
+	lbase	= require('larvitbase'),
+	log	= require('winston'),
+	fs	= require('fs'),
+	db	= require('larvitdb');
 
 // Set up winston
 log.remove(log.transports.Console);
 log.add(log.transports.Console, {
-	'level':     'warn',
-	'colorize':  true,
-	'timestamp': true,
-	'json':      false
+	'level':	'debug',
+	'colorize':	true,
+	'timestamp':	true,
+	'json':	false
 });
 
 before(function(done) {
@@ -23,11 +23,7 @@ before(function(done) {
 
 	function checkEmptyDb() {
 		db.query('SHOW TABLES', function(err, rows) {
-			if (err) {
-				log.error(err);
-				assert( ! err, 'err should be negative');
-				process.exit(1);
-			}
+			if (err) throw err;
 
 			if (rows.length) {
 				log.error('Database is not empty. To make a test, you must supply an empty database!');
@@ -40,31 +36,31 @@ before(function(done) {
 	}
 
 	function runDbSetup(confFile) {
-		log.verbose('DB config: ' + JSON.stringify(require(confFile)));
+		log.verbose('larvitsession: DB config: ' + JSON.stringify(require(confFile)));
 
 		db.setup(require(confFile), function(err) {
-			assert( ! err, 'err should be negative');
+			if (err) throw err;
 
 			checkEmptyDb();
 		});
 	}
 
-	if (process.argv[3] === undefined)
+	if (process.argv[3] === undefined) {
 		confFile = __dirname + '/../config/db_test.json';
-	else
+	} else {
 		confFile = process.argv[3].split('=')[1];
+	}
 
-	log.verbose('DB config file: "' + confFile + '"');
+	log.verbose('larvitsession: DB config file: "' + confFile + '"');
 
 	fs.stat(confFile, function(err) {
 		const altConfFile = __dirname + '/../config/' + confFile;
 
 		if (err) {
-			log.info('Failed to find config file "' + confFile + '", retrying with "' + altConfFile + '"');
+			log.info('larvitsession: Failed to find config file "' + confFile + '", retrying with "' + altConfFile + '"');
 
 			fs.stat(altConfFile, function(err) {
-				if (err)
-					assert( ! err, 'fs.stat failed: ' + err.message);
+				if (err) throw err;
 
 				if ( ! err) {
 					runDbSetup(altConfFile);
@@ -92,9 +88,7 @@ describe('Basics', function() {
 		freeport(function(err, port) {
 			const conf = {};
 
-			if (err) {
-				throw err;
-			}
+			if (err) throw err;
 
 			conf.port = httpPort = port;
 			conf.middleware = [
@@ -112,10 +106,10 @@ describe('Basics', function() {
 
 	it('Testing if sessions table got created', function(done) {
 		request('http://localhost:' + httpPort, function(err) {
-			assert( ! err, 'err should be negative');
+			if (err) throw err;
 
 			db.query('SELECT * FROM sessions', function(err) {
-				assert( ! err, 'err should be negative');
+				if (err) throw err;
 
 				done(); // At least we know the sessions table have been created....
 			});
