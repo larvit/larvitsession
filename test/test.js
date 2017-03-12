@@ -12,17 +12,17 @@ const	freeport	= require('freeport'),
 // Set up winston
 log.remove(log.transports.Console);
 log.add(log.transports.Console, {
-	'level':	'debug',
+	'level':	'warn',
 	'colorize':	true,
 	'timestamp':	true,
 	'json':	false
 });
 
-before(function(done) {
+before(function (done) {
 	let confFile;
 
 	function checkEmptyDb() {
-		db.query('SHOW TABLES', function(err, rows) {
+		db.query('SHOW TABLES', function (err, rows) {
 			if (err) throw err;
 
 			if (rows.length) {
@@ -38,7 +38,7 @@ before(function(done) {
 	function runDbSetup(confFile) {
 		log.verbose('larvitsession: DB config: ' + JSON.stringify(require(confFile)));
 
-		db.setup(require(confFile), function(err) {
+		db.setup(require(confFile), function (err) {
 			if (err) throw err;
 
 			checkEmptyDb();
@@ -53,13 +53,13 @@ before(function(done) {
 
 	log.verbose('larvitsession: DB config file: "' + confFile + '"');
 
-	fs.stat(confFile, function(err) {
+	fs.stat(confFile, function (err) {
 		const altConfFile = __dirname + '/../config/' + confFile;
 
 		if (err) {
 			log.info('larvitsession: Failed to find config file "' + confFile + '", retrying with "' + altConfFile + '"');
 
-			fs.stat(altConfFile, function(err) {
+			fs.stat(altConfFile, function (err) {
 				if (err) throw err;
 
 				if ( ! err) {
@@ -72,20 +72,20 @@ before(function(done) {
 	});
 });
 
-after(function(done) {
+after(function (done) {
 	// We set a timeout here, since the server will fiddle with the database a bit after the response have been sent
-	setTimeout(function() {
+	setTimeout(function () {
 		db.removeAllTables(done);
 	}, 100);
 });
 
-describe('Basics', function() {
+describe('Basics', function () {
 	let httpPort;
 
-	it('Setup http server', function(done) {
+	it('Setup http server', function (done) {
 		const lsession = require(__dirname + '/../larvitsession.js');
 
-		freeport(function(err, port) {
+		freeport(function (err, port) {
 			const conf = {};
 
 			if (err) throw err;
@@ -104,11 +104,11 @@ describe('Basics', function() {
 		});
 	});
 
-	it('Testing if sessions table got created', function(done) {
-		request('http://localhost:' + httpPort, function(err) {
+	it('Testing if sessions table got created', function (done) {
+		request('http://localhost:' + httpPort, function (err) {
 			if (err) throw err;
 
-			db.query('SELECT * FROM sessions', function(err) {
+			db.query('SELECT * FROM sessions', function (err) {
 				if (err) throw err;
 
 				done(); // At least we know the sessions table have been created....

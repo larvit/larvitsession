@@ -52,10 +52,10 @@ Now in a controller we can use the session like this:
 ```javascript
 'use strict';
 
-exports.run = function(request, response, callback) {
+exports.run = function (request, response, callback) {
 
 	// Destroy the session, so we're sure to start on a clean slate
-	request.session.destroy(function(err) {
+	request.session.destroy(function (err) {
 		if (err) {
 			throw err;
 		}

@@ -1,32 +1,55 @@
 'use strict';
 
-const	dbMigration	= require('larvitdbmigration'),
+const	topLogPrefix	= 'larvitsession: larvitsession.js - ',
+	DbMigration	= require('larvitdbmigration'),
 	cookieName	= 'session',
 	uuidLib	= require('uuid'),
 	Events	= require('events'),
 	log	= require('winston'),
 	db	= require('larvitdb'),
-	dbCreateEmitter	= new Events();
+	eventEmitter	= new Events();
 
-let dbCreated = false;
-
-dbMigration({'tableName': 'sessions_db_version', 'migrationScriptsPath': __dirname + '/dbmigration'})(function(err) {
-	if (err) {
-		log.error('larvitsession: Could not run database migrations: ' + err.message);
-	} else {
-		log.verbose('larvitsession: Database migrations ran successfully');
-		dbCreated = true;
-		dbCreateEmitter.emit('created');
-	}
-});
+let	readyInProgress	= false,
+	isReady	= false;
 
 function ready(cb) {
-	if (dbCreated === true) {
-		cb();
+	const	logPrefix	= topLogPrefix + 'ready() - ',
+		options	= {};
+
+	let	dbMigration;
+
+	if (typeof cb !== 'function') {
+		cb = function (){};
+	}
+	if (isReady === true) return cb();
+
+	if (readyInProgress === true) {
+		eventEmitter.on('ready', cb);
 		return;
 	}
 
-	dbCreateEmitter.on('created', cb);
+	readyInProgress = true;
+
+	log.debug(logPrefix + 'Waiting for dbmigration()');
+
+	options.dbType	= 'larvitdb';
+	options.dbDriver	= db;
+	options.tableName	= 'sessions_db_version';
+	options.migrationScriptsPath	= __dirname + '/dbmigration';
+	dbMigration	= new DbMigration(options);
+
+	dbMigration.run(function (err) {
+		if (err) {
+			log.error(topLogPrefix + err.message);
+			return;
+		}
+
+		isReady	= true;
+		readyInProgress	= false;
+		eventEmitter.emit('ready');
+
+		cb(err);
+	});
 }
 
 function session(req, res, cb) {
@@ -36,8 +59,7 @@ function session(req, res, cb) {
 	if (req.cookies === undefined || res.cookies === undefined) {
 		let err = new Error('Can not find required cookies object on req or res object. Please load https://github.com/pillarjs/cookies into req.cookies');
 		log.warn('larvitsession: session() - ' + err.message);
-		cb(err);
-		return;
+		return cb(err);
 	}
 
 	/**
@@ -50,7 +72,7 @@ function session(req, res, cb) {
 		const	dbFields	= [],
 			sql	= 'SELECT json FROM sessions WHERE uuid = ?';
 
-		ready(function() {
+		ready(function () {
 			log.silly('larvitsession: session() - getSession() - Running');
 
 			// If sessionKey is not yet defined, try to get it from the cookies
@@ -68,16 +90,15 @@ function session(req, res, cb) {
 
 				req.session.key = uuidLib.v4();
 				req.cookies.set(cookieName, req.session.key);
-				cb();
-				return;
+				return cb();
 			}
 
 			log.silly('larvitsession: session() - getSession() - A session key was found, validate it and load from database');
 
 			dbFields.push(req.session.key);
 
-			db.query(sql, dbFields, function(err, rows) {
-				if (err) { cb(err); return; }
+			db.query(sql, dbFields, function (err, rows) {
+				if (err) return cb(err);
 
 				if (rows.length === 0) {
 					// This might be OK since it might have been cleared on an earlier call. Good to log, but no need to scream. :)
@@ -86,8 +107,7 @@ function session(req, res, cb) {
 					// Always set a new, random uuid to make sure no one manually sets their own session uuid to spoof the system
 					req.session.key = uuidLib.v4();
 					req.cookies.set(cookieName, req.session.key);
-					cb();
-					return;
+					return cb();
 				}
 
 				req.session.startData = rows[0].json;
@@ -95,10 +115,9 @@ function session(req, res, cb) {
 				// Database information found, load them  up
 				try {
 					req.session.data = JSON.parse(rows[0].json);
-				} catch(err) {
+				} catch (err) {
 					log.error('larvitsession: session() - getSession() - Invalid session data found in database! uuid: "' + req.session.key + '"');
-					cb(err);
-					return;
+					return cb(err);
 				}
 
 				log.debug('larvitsession: session() - getSession() - Fetched data from database: "' + rows[0].json);
@@ -113,27 +132,26 @@ function session(req, res, cb) {
 	 *
 	 * @param func cb(err)
 	 */
-	req.session.destroy = function(cb) {
+	req.session.destroy = function (cb) {
 		const	dbFields	= [],
 			sql	= 'DELETE FROM sessions WHERE uuid = ?';
 
 		if (typeof cb !== 'function') {
-			cb = function() {};
+			cb = function () {};
 		}
 
 		req.session.key = req.cookies.get(cookieName);
 
 		if (req.session.key === undefined) {
 			req.session = {'data': {}};
-			cb();
-			return;
+			return cb();
 		}
 
 		dbFields.push(req.session.key);
 
-		ready(function() {
-			db.query(sql, dbFields, function(err) {
-				if (err) { cb(err); return; }
+		ready(function () {
+			db.query(sql, dbFields, function (err) {
+				if (err) return cb(err);
 
 				// Remove the cookie
 				// "If the value is omitted, an outbound header with an expired date is used to delete the cookie."
@@ -156,13 +174,13 @@ function writeToDb(req, res, data, cb) {
 	try {
 		dbFields.push(req.session.key);
 		dbFields.push(JSON.stringify(req.session.data));
-	} catch(err) {
+	} catch (err) {
 		log.error('larvitsession: writeToDb() - ' + err.message);
 		cb(err, req, res, data);
 		return;
 	}
 
-	ready(function() {
+	ready(function () {
 		if (dbFields[1] === '{}') {
 			log.debug('larvitsession: writeToDb() - Empty session data, remove completely from database not to waste space');
 			db.query('DELETE FROM sessions WHERE uuid = ?', [req.session.key], cb);
@@ -175,7 +193,7 @@ function writeToDb(req, res, data, cb) {
 			return;
 		}
 
-		db.query(sql, dbFields, function(err) {
+		db.query(sql, dbFields, function (err) {
 			cb(err, req, res, data);
 
 			// Clean up old entries
@@ -184,10 +202,10 @@ function writeToDb(req, res, data, cb) {
 	});
 }
 
-exports.middleware = function() {
+exports.middleware = function () {
 	return session;
 };
 
-exports.afterware = function() {
+exports.afterware = function () {
 	return writeToDb;
 };
