@@ -93,7 +93,16 @@ describe('Basics', function () {
 			conf.port = httpPort = port;
 			conf.middleware = [
 				cookies.express(),
-				lsession.middleware()
+				lsession.middleware(),
+				function (req, res, cb) {
+					if (JSON.stringify(req.session.data) === '{}') {
+						req.session.data = 'hej test test';
+					} else {
+						assert.strictEqual(req.session.data, 'hej test test');
+					}
+
+					cb(req, res);
+				}
 			];
 			conf.afterware = [
 				lsession.afterware()
@@ -107,13 +116,16 @@ describe('Basics', function () {
 	it('Testing if sessions table got created', function (done) {
 		request('http://localhost:' + httpPort, function (err) {
 			if (err) throw err;
-
-			db.query('SELECT * FROM sessions', function (err) {
+			db.query('SELECT * FROM sessions', function (err, result) {
 				if (err) throw err;
 
-				done(); // At least we know the sessions table have been created....
+				assert.strictEqual(JSON.parse(result[0].json), 'hej test test');
+
+				request('http://localhost:' + httpPort, function (err) {
+					if (err) throw err;
+					done(); // At least we know the sessions table have been created....
+				});
 			});
 		});
-
 	});
 });

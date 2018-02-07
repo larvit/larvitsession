@@ -4,6 +4,7 @@ const	topLogPrefix	= 'larvitsession: larvitsession.js - ',
 	DbMigration	= require('larvitdbmigration'),
 	cookieName	= 'session',
 	uuidLib	= require('uuid'),
+	validate	= require('uuid-validate'),
 	Events	= require('events'),
 	log	= require('winston'),
 	db	= require('larvitdb'),
@@ -81,6 +82,10 @@ function session(req, res, cb) {
 
 				req.session.key = req.cookies.get(cookieName);
 
+				if ( ! validate(req.session.key, 4)) {
+					delete req.session.key;
+				}
+
 				log.silly('larvitsession: session() - getSession() - sessionKey loaded from cookie: "' + req.session.key + '"');
 			}
 
@@ -142,7 +147,7 @@ function session(req, res, cb) {
 
 		req.session.key = req.cookies.get(cookieName);
 
-		if (req.session.key === undefined) {
+		if (req.session.key === undefined || ! validate(req.session.key, 4)) {
 			req.session = {'data': {}};
 			return cb();
 		}
@@ -185,6 +190,10 @@ function writeToDb(req, res, data, cb) {
 			log.debug('larvitsession: writeToDb() - Empty session data, remove completely from database not to waste space');
 			db.query('DELETE FROM sessions WHERE uuid = ?', [req.session.key], cb);
 			return;
+		} else {
+			if ( ! validate(req.session.key, 4)) {
+				return cb(new Error('Invalid session key'), req, res, data);
+			}
 		}
 
 		if (dbFields[1] === req.session.startData) {
