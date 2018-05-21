@@ -15,10 +15,10 @@
   "description": "Session handling module for node.js",
   "devDependencies": {
     "cookies": "^0.7.0",
-    "eslint": "^3.17.1",
+    "eslint": "^4.19.1",
     "freeport": "^1.0.5",
     "larvitbase": "^1.1.7",
-    "mocha": "^3.2.0",
+    "mocha": "^5.2.0",
     "request": "^2.81.0"
   },
   "keywords": [
@@ -33,7 +33,7 @@
   "scripts": {
     "test": "mocha"
   },
-  "version": "2.0.2",
+  "version": "2.0.3",
   "readmeFilename": "README.md",
   "license": "MIT"
 }
