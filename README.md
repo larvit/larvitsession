@@ -1,24 +1,21 @@
 [![Build Status](https://travis-ci.org/larvit/larvitsession.svg?branch=master)](https://travis-ci.org/larvit/larvitsession) [![Dependencies](https://david-dm.org/larvit/larvitsession.svg)](https://david-dm.org/larvit/larvitsession.svg)
+[![Coverage Status](https://coveralls.io/repos/github/larvit/larvitbase-www/badge.svg)](https://coveralls.io/github/larvit/larvitbase-www)
 
 # larvitsession
 
 Session handling middleware
-
-## Install
-
-```javascript
-npm i larvitsession
-```
 
 ## Usage
 
 The given example sets up larvitsession as a middleware to larvitbase. At the moment a database access is required via larvitdb.
 
 ```javascript
-const	lSession	= require('larvitsession'),
+const	session	= require('larvitsession'),
+	App	= require('larvitbase'),
 	db	= require('larvitdb');
 
-let conf;
+let	conf,
+	app;
 
 db.setup({
 	"connectionLimit":	10,
@@ -30,38 +27,27 @@ db.setup({
 	"database":	"dbname"
 });
 
-conf = {
-	"port":	8001,
-	"host":	"127.0.0.1",
-	"pubFilePath":	"./public"
-};
-
-conf.middleware = [
-	require('cookies').express(),
-	lSession.middleware() // Important that this is ran after the cookie middleware
-];
-conf.afterware = [
-	lSession.afterware()
-]
-
-require('larvitbase')(conf);
-```
-
-Now in a controller we can use the session like this:
-
-```javascript
-'use strict';
-
-exports.run = function (request, response, callback) {
-
-	// Destroy the session, so we're sure to start on a clean slate
-	request.session.destroy(function (err) {
-		if (err) {
-			throw err;
+// Create the app with a single middleware to view a page on port 8001
+app = new App({
+	'httpOptions': 8001,
+	'middlewares': [function (req, res, cb) {
+		if (req.session.data.counter === undefined) {
+			res.session.data.counter = 1;
+		} else {
+			req.session.data.counter	++;
 		}
+		res.write('Your browsersession have viewed this page ' + req.session.data.counter + ' time(s)');
+		cb();
+	}]
+});
 
-		// Set a new key/value - this will be saved in database and can be retreived on page reload
-		request.session.data.foo = 'bar';
-	});
-};
+// Add the session middlewares
+// This way of adding the session middlewares works well on larvitbase-www as well, when there are many middlewares
+app.middlewares.unshift(session.start);
+app.middlewares.unshift(request('cookies').Express());
+app.middlewares.push(session.writeToDb);
+
+app.run(function (err) {
+	if (err) throw err;
+});
 ```

@@ -1,10 +1,10 @@
 'use strict';
 
 const	freeport	= require('freeport'),
-	request	= require('request').defaults({jar: true}),
-	cookies	= require('cookies'),
+	session	= require('../index.js'),
+	request	= require('request').defaults({'jar': true}),
 	assert	= require('assert'),
-	lbase	= require('larvitbase'),
+	App	= require('larvitbase'),
 	log	= require('winston'),
 	fs	= require('fs'),
 	db	= require('larvitdb');
@@ -19,8 +19,6 @@ log.add(log.transports.Console, {
 });
 
 before(function (done) {
-	let confFile;
-
 	function checkEmptyDb() {
 		db.query('SHOW TABLES', function (err, rows) {
 			if (err) throw err;
@@ -36,6 +34,7 @@ before(function (done) {
 	}
 
 	function runDbSetup(confFile) {
+		log.verbose('larvitsession: DB config file: "' + confFile + '"');
 		log.verbose('larvitsession: DB config: ' + JSON.stringify(require(confFile)));
 
 		db.setup(require(confFile), function (err) {
@@ -45,71 +44,71 @@ before(function (done) {
 		});
 	}
 
-	if (process.argv[3] === undefined) {
-		confFile = __dirname + '/../config/db_test.json';
+	if (fs.existsSync(__dirname + '/../config/db_test.json')) {
+		runDbSetup('../config/db_test.json');
+	} else if (process.env.DB_CONF_FILE && fs.existsSync(process.env.DB_CONF_FILE)) {
+		runDbSetup(process.env.DB_CONF_FILE);
 	} else {
-		confFile = process.argv[3].split('=')[1];
+		throw new Error('No database configuration found');
 	}
-
-	log.verbose('larvitsession: DB config file: "' + confFile + '"');
-
-	fs.stat(confFile, function (err) {
-		const altConfFile = __dirname + '/../config/' + confFile;
-
-		if (err) {
-			log.info('larvitsession: Failed to find config file "' + confFile + '", retrying with "' + altConfFile + '"');
-
-			fs.stat(altConfFile, function (err) {
-				if (err) throw err;
-
-				if ( ! err) {
-					runDbSetup(altConfFile);
-				}
-			});
-		} else {
-			runDbSetup(confFile);
-		}
-	});
 });
 
 after(function (done) {
 	// We set a timeout here, since the server will fiddle with the database a bit after the response have been sent
 	setTimeout(function () {
-		db.removeAllTables(done);
-	}, 100);
+		db.removeAllTables(function (err) {
+			if (err) throw err;
+			done();
+			process.exit();
+		});
+	}, 1000);
 });
 
 describe('Basics', function () {
-	let httpPort;
+	let	httpPort,
+		app;
 
 	it('Setup http server', function (done) {
-		const lsession = require(__dirname + '/../larvitsession.js');
-
 		freeport(function (err, port) {
-			const conf = {};
+			let	found	= false;
 
 			if (err) throw err;
 
-			conf.port = httpPort = port;
-			conf.middleware = [
-				cookies.express(),
-				lsession.middleware(),
-				function (req, res, cb) {
+			httpPort	= port;
+
+			app = new App({
+				'httpOptions': port,
+				'middlewares': [function (req, res, cb) {
 					if (JSON.stringify(req.session.data) === '{}') {
-						req.session.data = 'hej test test';
+						req.session.data	= 'hej test test';
 					} else {
+						found	= true;
 						assert.strictEqual(req.session.data, 'hej test test');
 					}
 
-					cb(req, res);
-				}
-			];
-			conf.afterware = [
-				lsession.afterware()
-			];
+					res.end('gordon');
 
-			lbase(conf);
-			done();
+					cb();
+				}]
+			});
+
+			app.middlewares.unshift(session.start);
+			app.middlewares.unshift(require('cookies').express());
+			app.middlewares.push(session.writeToDb);
+
+			app.start(function (err) {
+				if (err) throw err;
+				request('http://localhost:' + port, function (err) {
+					if (err) throw err;
+					request('http://localhost:' + port, function (err, response, body) {
+						if (err) throw err;
+
+						assert.strictEqual(body,	'gordon');
+						assert.strictEqual(found,	true);
+						done();
+					});
+				});
+			});
 		});
 	});
 
