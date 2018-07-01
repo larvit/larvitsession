@@ -44,7 +44,7 @@ app = new App({
 // Add the session middlewares
 // This way of adding the session middlewares works well on larvitbase-www as well, when there are many middlewares
 app.middlewares.unshift(session.start);
-app.middlewares.unshift(request('cookies').Express());
+app.middlewares.unshift(request('cookies').express());
 app.middlewares.push(session.writeToDb);
 
 app.run(function (err) {
