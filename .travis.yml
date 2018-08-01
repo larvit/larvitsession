@@ -27,9 +27,6 @@ script: ./node_modules/eslint/bin/eslint.js ./
 
 after_script: "cat ./coverage/lcov.info | ./node_modules/coveralls/bin/coveralls.js"
 
-services:
-  - mysql
-
 addons:
   apt:
     sources:
@@ -37,8 +34,5 @@ addons:
     packages:
     - g++-4.8
 
-#addons:
-#  mariadb:
-#    - 5.5
-#    - 10.0
-#    - 10.1
+addons:
+  mariadb: 10.3
