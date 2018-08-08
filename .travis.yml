@@ -21,9 +21,8 @@ install:
 
 before_script:
   - mysql -e 'CREATE DATABASE test'
-  - ls -l node_modules/.bin
 
-script: DB_CONF_FILE=../config/db_travis.json node_modules/.bin/istanbul cover mocha --exit
+script: DB_CONF_FILE=../config/db_travis.json node_modules/.bin/istanbul cover node_modules/.bin/mocha --exit
 
 after_script: "cat ./coverage/lcov.info | ./node_modules/coveralls/bin/coveralls.js"
 
