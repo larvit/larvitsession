@@ -1,22 +1,17 @@
 'use strict';
 
 const	freeport	= require('freeport'),
-	session	= require('../index.js'),
+	Session	= require('../index.js'),
 	request	= require('request').defaults({'jar': true}),
 	assert	= require('assert'),
+	Lutils	= require('larvitutils'),
+	lutils	= new Lutils(),
 	App	= require('larvitbase'),
-	log	= require('winston'),
+	log	= new lutils.Log('warn'),
 	fs	= require('fs'),
 	db	= require('larvitdb');
 
-// Set up winston
-log.remove(log.transports.Console);
-log.add(log.transports.Console, {
-	'level':	'warn',
-	'colorize':	true,
-	'timestamp':	true,
-	'json':	false
-});
+let	session	= new Session({'db': db, 'log': log});
 
 before(function (done) {
 	function checkEmptyDb() {
@@ -92,9 +87,9 @@ describe('Basics', function () {
 				}]
 			});
 
-			app.middlewares.unshift(session.start);
+			app.middlewares.unshift(function (req, res, cb) { session.start(req, res, cb); });
 			app.middlewares.unshift(require('cookies').express());
-			app.middlewares.push(session.writeToDb);
+			app.middlewares.push(function (req, res, cb) { session.writeToDb(req, res, cb); });
 
 			app.start(function (err) {
 				if (err) throw err;
@@ -102,7 +97,6 @@ describe('Basics', function () {
 					if (err) throw err;
 					request('http://localhost:' + port, function (err, response, body) {
 						if (err) throw err;
-
 						assert.strictEqual(body,	'gordon');
 						assert.strictEqual(found,	true);
 						done();

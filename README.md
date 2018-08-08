@@ -10,11 +10,14 @@ Session handling middleware
 The given example sets up larvitsession as a middleware to larvitbase. At the moment a database access is required via larvitdb.
 
 ```javascript
-const	session	= require('larvitsession'),
+const	Session	= require('larvitsession'),
+	winston	= require('winston'),
+	log	= winston.createLogger({'transports': [new winston.transports.Console()]}),
 	App	= require('larvitbase'),
 	db	= require('larvitdb');
 
-let	conf,
+let	session,
+	conf,
 	app;
 
 db.setup({
@@ -25,6 +28,11 @@ db.setup({
 	"charset":	"utf8mb4_general_ci",
 	"supportBigNumbers":	true,
 	"database":	"dbname"
+});
+
+session = new Session({
+	'db':	db,
+	'log':	log
 });
 
 // Create the app with a single middleware to view a page on port 8001
