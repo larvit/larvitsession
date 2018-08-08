@@ -42,6 +42,7 @@ before(function (done) {
 	if (fs.existsSync(__dirname + '/../config/db_test.json')) {
 		runDbSetup('../config/db_test.json');
 	} else if (process.env.DB_CONF_FILE && fs.existsSync(process.env.DB_CONF_FILE)) {
+		console.log('looking for: ' + process.env.DB_CONF_FILE);
 		runDbSetup(process.env.DB_CONF_FILE);
 	} else {
 		throw new Error('No database configuration found');

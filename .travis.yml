@@ -1,7 +1,7 @@
 language: node_js
 
 env:
-  - CXX=g++-4.8
+  - CXX=g++-4.8 DB_CONF_FILE=../config/db_travis.json
 
 node_js:
   - 6
@@ -22,7 +22,7 @@ install:
 before_script:
   - mysql -e 'CREATE DATABASE test'
 
-script: DB_CONF_FILE=../config/db_travis.json node_modules/.bin/istanbul cover node_modules/.bin/mocha --exit
+script: node_modules/.bin/istanbul cover node_modules/.bin/mocha --exit
 
 after_script: "cat ./coverage/lcov.info | ./node_modules/coveralls/bin/coveralls.js"
 
