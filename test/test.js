@@ -9,9 +9,8 @@ const	freeport	= require('freeport'),
 	App	= require('larvitbase'),
 	log	= new lutils.Log('warn'),
 	fs	= require('fs'),
-	db	= require('larvitdb');
-
-let	session	= new Session({'db': db, 'log': log});
+	db	= require('larvitdb'),
+	session	= new Session({'db': db, 'log': log});
 
 before(function (done) {
 	function checkEmptyDb() {
@@ -40,6 +39,8 @@ before(function (done) {
 	}
 
 console.log('process.env.DB_CONF_FILE: ' + process.env.DB_CONF_FILE);
+console.log(process.cwd());
+console.log(fs.existsSync(process.cwd() + '/' + process.env.DB_CONF_FILE));
 
 	if (fs.existsSync(__dirname + '/../config/db_test.json')) {
 		runDbSetup('../config/db_test.json');
