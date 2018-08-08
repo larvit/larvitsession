@@ -21,6 +21,7 @@ install:
 
 before_script:
   - mysql -e 'CREATE DATABASE test'
+  - ls -l node_modules/.bin
 
 script: DB_CONF_FILE=../config/db_travis.json node_modules/.bin/istanbul cover mocha --exit
 
