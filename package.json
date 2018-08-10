@@ -23,7 +23,7 @@
     "larvitbase": "3.0.0",
     "mocha": "5.2.0",
     "mocha-eslint": "4.1.0",
-    "request": "2.87.0"
+    "request": "2.88.0"
   },
   "keywords": [
     "session"
