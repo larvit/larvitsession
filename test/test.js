@@ -28,10 +28,13 @@ before(function (done) {
 	}
 
 	function runDbSetup(confFile) {
-		log.verbose('larvitsession: DB config file: "' + confFile + '"');
-		log.verbose('larvitsession: DB config: ' + JSON.stringify(require(confFile)));
+		const	conf	= require(confFile);
 
-		db.setup(require(confFile), function (err) {
+		conf.log	= log;
+		log.verbose('larvitsession: DB config file: "' + confFile + '"');
+		log.verbose('larvitsession: DB config: ' + conf);
+
+		db.setup(conf, function (err) {
 			if (err) throw err;
 
 			checkEmptyDb();
