@@ -1,38 +1,48 @@
 'use strict';
 
-const	topLogPrefix	= 'larvitsession: index.js - ',
-	DbMigration	= require('larvitdbmigration'),
-	cookieName	= 'session',
-	validate	= require('uuid-validate'),
-	uuidLib	= require('uuid'),
-	LUtils	= require('larvitutils'),
-	lUtils	= new LUtils(),
-	Events	= require('events');
+const topLogPrefix = 'larvitsession: index.js - ';
+const DbMigration  = require('larvitdbmigration');
+const cookieName   = 'session';
+const validate     = require('uuid-validate');
+const uuidLib      = require('uuid');
+const LUtils       = require('larvitutils');
+const Events       = require('events');
 
+/**
+ *
+ * @param {obj} options {
+ * 	'db': instance of db object
+ *
+ * // Optional
+ * 	'log': instance of log object
+ * }
+ */
 function Session(options) {
-	const	that	= this;
+	const that = this;
 
-	that.options	= options || {};
-	that.eventEmitter	= new Events();
+	that.options      = options || {};
+	that.eventEmitter = new Events();
 
-	if ( ! that.options.log) {
-		that.options.log	= new lUtils.log();
+	if (! that.options.log) {
+		const lUtils = new LUtils();
+
+		that.options.log = new lUtils.Log();
 	}
 
-	if ( ! options.db) {
+	if (! options.db) {
 		throw new Error('Required options "db" is missing');
 	}
 
-	that.log	= that.options.log;
-	that.db	= that.options.db;
+	that.log = that.options.log;
+	that.db  = that.options.db;
 }
 
 Session.prototype.ready = function ready(cb) {
-	const	logPrefix	= topLogPrefix + 'ready() - ',
-		options	= {},
-		that	= this;
+	const logPrefix = topLogPrefix + 'ready() - ';
+	const options   = {};
+	const that      = this;
 
-	let	dbMigration;
+	let dbMigration;
 
 	if (typeof cb !== 'function') {
 		cb = function () {};
@@ -41,28 +51,30 @@ Session.prototype.ready = function ready(cb) {
 
 	if (that.readyInProgress === true) {
 		that.eventEmitter.on('ready', cb);
+
 		return;
 	}
 
-	that.readyInProgress	= true;
+	that.readyInProgress = true;
 
 	that.log.debug(logPrefix + 'Waiting for dbmigration()');
 
-	options.dbType	= 'mariadb';
-	options.dbDriver	= that.db;
-	options.tableName	= 'sessions_db_version';
-	options.migrationScriptsPath	= __dirname + '/dbmigration';
-	options.log	= that.log;
-	dbMigration	= new DbMigration(options);
+	options.dbType               = 'mariadb';
+	options.dbDriver             = that.db;
+	options.tableName            = 'sessions_db_version';
+	options.migrationScriptsPath = __dirname + '/dbmigration';
+	options.log                  = that.log;
+	dbMigration                  = new DbMigration(options);
 
 	dbMigration.run(function (err) {
 		if (err) {
 			that.log.error(topLogPrefix + err.message);
+
 			return;
 		}
 
-		that.isReady	= true;
-		that.readyInProgress	= false;
+		that.isReady         = true;
+		that.readyInProgress = false;
 		that.eventEmitter.emit('ready');
 
 		cb(err);
@@ -70,19 +82,20 @@ Session.prototype.ready = function ready(cb) {
 };
 
 Session.prototype.start = function start(req, res, cb) {
-	const	logPrefix	= topLogPrefix + 'start() - ',
-		that	= this;
+	const logPrefix = topLogPrefix + 'start() - ';
+	const that      = this;
 
 	/**
 	 * Get session key and data from cookie and database or create new if it was missing either in cookie or database
 	 * Will set the sessionKey in the outer scope
 	 *
-	 * @param cb(err)
+	 * @param {func} cb(err)
+	 * @returns {func} self
 	 */
 	function getSession(cb) {
-		const	subLogPrefix	= logPrefix + 'getSession() - ',
-			dbFields	= [],
-			sql	= 'SELECT json FROM sessions WHERE uuid = ?';
+		const subLogPrefix = logPrefix + 'getSession() - ';
+		const dbFields     = [];
+		const sql          = 'SELECT json FROM sessions WHERE uuid = ?';
 
 		that.log.silly(subLogPrefix + 'Running');
 
@@ -90,9 +103,9 @@ Session.prototype.start = function start(req, res, cb) {
 		if (req.session.key === undefined) {
 			that.log.silly(subLogPrefix + 'No sessionKey found, trying to get one');
 
-			req.session.key	= req.cookies.get(cookieName);
+			req.session.key = req.cookies.get(cookieName);
 
-			if ( ! validate(req.session.key, 4)) {
+			if (! validate(req.session.key, 4)) {
 				delete req.session.key;
 			}
 
@@ -105,6 +118,7 @@ Session.prototype.start = function start(req, res, cb) {
 
 			req.session.key	= uuidLib.v4();
 			req.cookies.set(cookieName, req.session.key);
+
 			return cb();
 		}
 
@@ -120,8 +134,9 @@ Session.prototype.start = function start(req, res, cb) {
 				that.log.verbose(subLogPrefix + 'No session data found for key with uuid: "' + req.session.key + '"');
 
 				// Always set a new, random uuid to make sure no one manually sets their own session uuid to spoof the system
-				req.session.key	= uuidLib.v4();
+				req.session.key = uuidLib.v4();
 				req.cookies.set(cookieName, req.session.key);
+
 				return cb();
 			}
 
@@ -132,6 +147,7 @@ Session.prototype.start = function start(req, res, cb) {
 				req.session.data	= JSON.parse(rows[0].json);
 			} catch (err) {
 				that.log.error(subLogPrefix + 'Invalid session data found in database! uuid: "' + req.session.key + '"');
+
 				return cb(err);
 			}
 
@@ -142,31 +158,35 @@ Session.prototype.start = function start(req, res, cb) {
 	}
 
 	// Initiate req.session
-	req.session	= {'data': {}};
+	req.session = {'data': {}};
 
 	if (req.cookies === undefined || res.cookies === undefined) {
 		const	err	= new Error('Can not find required cookies object on req or res object. Please load https://github.com/pillarjs/cookies into req.cookies');
+
 		that.log.error(logPrefix + err.message);
+
 		return cb(err);
 	}
 
 	/**
 	 * Destroy session - remove data from database and delete session cookie
 	 *
-	 * @param func cb(err)
+	 * @param {func} cb(err)
+	 * @returns {func} cb
 	 */
 	req.session.destroy = function destroy(cb) {
-		const	dbFields	= [],
-			sql	= 'DELETE FROM sessions WHERE uuid = ?';
+		const dbFields = [];
+		const sql      = 'DELETE FROM sessions WHERE uuid = ?';
 
 		if (typeof cb !== 'function') {
-			cb	= function () {};
+			cb = function () {};
 		}
 
 		req.session.key	= req.cookies.get(cookieName);
 
 		if (req.session.key === undefined || ! validate(req.session.key, 4)) {
 			req.session = {'data': {}};
+
 			return cb();
 		}
 
@@ -178,7 +198,7 @@ Session.prototype.start = function start(req, res, cb) {
 			// Remove the cookie
 			// "If the value is omitted, an outbound header with an expired date is used to delete the cookie."
 			req.cookies.set(cookieName);
-			req.session	= {'data': {}};
+			req.session = {'data': {}};
 
 			cb();
 		});
@@ -192,16 +212,17 @@ Session.prototype.start = function start(req, res, cb) {
 };
 
 Session.prototype.writeToDb = function writeToDb(req, res, cb) {
-	const	logPrefix	= topLogPrefix + 'writeToDb() - ',
-		dbFields	= [],
-		that	= this,
-		sql	= 'REPLACE INTO sessions (uuid, json) VALUES(?,?)';
+	const logPrefix = topLogPrefix + 'writeToDb() - ';
+	const dbFields  = [];
+	const that      = this;
+	const sql       = 'REPLACE INTO sessions (uuid, json) VALUES(?,?)';
 
 	try {
 		dbFields.push(req.session.key);
 		dbFields.push(JSON.stringify(req.session.data));
 	} catch (err) {
 		that.log.error(logPrefix + err.message);
+
 		return cb(err);
 	}
 
@@ -211,17 +232,19 @@ Session.prototype.writeToDb = function writeToDb(req, res, cb) {
 		if (dbFields[1] === '{}') {
 			that.log.debug(logPrefix + 'Empty session data, remove completely from database not to waste space');
 			that.db.query('DELETE FROM sessions WHERE uuid = ?', [req.session.key], cb);
+
 			return;
-		} else {
-			if ( ! validate(req.session.key, 4)) {
-				const	err	= new Error('Invalid session key');
-				that.log.info(logPrefix + err.message);
-				return cb(err);
-			}
+		} else if (! validate(req.session.key, 4)) {
+			const err = new Error('Invalid session key');
+
+			that.log.info(logPrefix + err.message);
+
+			return cb(err);
 		}
 
 		if (dbFields[1] === req.session.startData) {
 			that.log.debug(logPrefix + 'Session data is not different from database, do not rewrite it');
+
 			return cb();
 		}
 

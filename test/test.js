@@ -1,18 +1,19 @@
 'use strict';
 
-const	freeport	= require('freeport'),
-	Session	= require('../index.js'),
-	request	= require('request').defaults({'jar': true}),
-	assert	= require('assert'),
-	Lutils	= require('larvitutils'),
-	lutils	= new Lutils(),
-	App	= require('larvitbase'),
-	log	= new lutils.Log('warn'),
-	fs	= require('fs'),
-	db	= require('larvitdb'),
-	session	= new Session({'db': db, 'log': log});
+const freeport = require('freeport');
+const Session  = require('../index.js');
+const request  = require('request').defaults({'jar': true});
+const assert   = require('assert');
+const LUtils   = require('larvitutils');
+const lUtils   = new LUtils();
+const App      = require('larvitbase');
+const log      = new lUtils.Log('warn');
+const fs       = require('fs');
+const db       = require('larvitdb');
+const session  = new Session({'db': db, 'log': log});
 
 before(function (done) {
+	/* eslint-disable require-jsdoc */
 	function checkEmptyDb() {
 		db.query('SHOW TABLES', function (err, rows) {
 			if (err) throw err;
@@ -28,9 +29,9 @@ before(function (done) {
 	}
 
 	function runDbSetup(confFile) {
-		const	conf	= require(confFile);
+		const conf = require(confFile);
 
-		conf.log	= log;
+		conf.log = log;
 		log.verbose('larvitsession: DB config file: "' + confFile + '"');
 		log.verbose('larvitsession: DB config: ' + conf);
 
@@ -40,6 +41,7 @@ before(function (done) {
 			checkEmptyDb();
 		});
 	}
+	/* eslint-enable require-jsdoc */
 
 	if (fs.existsSync(__dirname + '/../config/db_test.json')) {
 		runDbSetup('../config/db_test.json');
@@ -62,22 +64,23 @@ after(function (done) {
 });
 
 describe('Basics', function () {
-	let	httpPort,
-		app;
+	let httpPort;
+	let app;
 
 	it('Setup http server', function (done) {
 		freeport(function (err, port) {
-			let	found	= false;
+			let found = false;
 
 			if (err) throw err;
 
-			httpPort	= port;
+			httpPort = port;
 
 			app = new App({
+				'log':         log,
 				'httpOptions': port,
 				'middlewares': [function (req, res, cb) {
 					if (JSON.stringify(req.session.data) === '{}') {
-						req.session.data	= 'hej test test';
+						req.session.data = 'hej test test';
 					} else {
 						found	= true;
 						assert.strictEqual(req.session.data, 'hej test test');
@@ -99,8 +102,8 @@ describe('Basics', function () {
 					if (err) throw err;
 					request('http://localhost:' + port, function (err, response, body) {
 						if (err) throw err;
-						assert.strictEqual(body,	'gordon');
-						assert.strictEqual(found,	true);
+						assert.strictEqual(body, 'gordon');
+						assert.strictEqual(found, true);
 						done();
 					});
 				});
