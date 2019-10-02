@@ -12,6 +12,8 @@ const Events       = require('events');
  *
  * @param {obj} options {
  * 	'db': instance of db object
+ * 	'deleteLimit': limit number of delete during cleanup of old sessions
+ * 	'deleteKeepDays': number of days to keep during cleanup of old sessions
  *
  * // Optional
  * 	'log': instance of log object
@@ -35,6 +37,8 @@ function Session(options) {
 
 	that.log = that.options.log;
 	that.db  = that.options.db;
+	that.deleteLimit = options.deleteLimit || 100;
+	that.deleteKeepDays = options.deleteKeepDays || 10;
 }
 
 Session.prototype.ready = function ready(cb) {
@@ -252,7 +256,15 @@ Session.prototype.writeToDb = function writeToDb(req, res, cb) {
 			cb(err);
 
 			// Clean up old entries
-			that.db.query('DELETE FROM sessions WHERE updated < DATE_SUB(NOW(), INTERVAL 10 DAY);');
+			let sql = `DELETE FROM sessions WHERE updated < DATE_SUB(NOW(), INTERVAL ${that.deleteKeepDays} DAY)`;
+
+			if (that.deleteLimit) {
+				sql += ` LIMIT ${that.deleteLimit}`;
+			}
+
+			sql += ';';
+
+			that.db.query(sql);
 		});
 	});
 };
