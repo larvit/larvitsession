@@ -14,6 +14,7 @@ const Events       = require('events');
  * 	'db': instance of db object
  * 	'deleteLimit': limit number of delete during cleanup of old sessions
  * 	'deleteKeepDays': number of days to keep during cleanup of old sessions
+ * 	'sessionExpire': number of days to keep the session cookie alive. Expire will be set to 'session' if undefined
  *
  * // Optional
  * 	'log': instance of log object
@@ -39,6 +40,7 @@ function Session(options) {
 	that.db  = that.options.db;
 	that.deleteLimit = options.deleteLimit || 100;
 	that.deleteKeepDays = options.deleteKeepDays || 10;
+	that.sessionExpire = options.sessionExpire;
 }
 
 Session.prototype.ready = function ready(cb) {
@@ -89,6 +91,15 @@ Session.prototype.start = function start(req, res, cb) {
 	const logPrefix = topLogPrefix + 'start() - ';
 	const that      = this;
 
+	let sessionExpire = undefined;
+
+	if (that.sessionExpire) {
+		const d = new Date();
+
+		d.setTime(d.getTime() + (that.sessionExpire * 24 * 60 * 60 * 1000));
+		sessionExpire = { 'expires': d };
+	}
+
 	/**
 	 * Get session key and data from cookie and database or create new if it was missing either in cookie or database
 	 * Will set the sessionKey in the outer scope
@@ -121,9 +132,14 @@ Session.prototype.start = function start(req, res, cb) {
 			that.log.silly(subLogPrefix + 'sessionKey is undefined, set a new, random uuid');
 
 			req.session.key	= uuidLib.v4();
-			req.cookies.set(cookieName, req.session.key);
+			req.cookies.set(cookieName, req.session.key, sessionExpire);
 
 			return cb();
+		}
+
+		// If we have sessionExpire, update the cookie to update the expires date
+		if (sessionExpire) {
+			req.cookies.set(cookieName, req.session.key, sessionExpire);
 		}
 
 		that.log.silly(subLogPrefix + 'A session key was found, validate it and load from database');
@@ -139,7 +155,7 @@ Session.prototype.start = function start(req, res, cb) {
 
 				// Always set a new, random uuid to make sure no one manually sets their own session uuid to spoof the system
 				req.session.key = uuidLib.v4();
-				req.cookies.set(cookieName, req.session.key);
+				req.cookies.set(cookieName, req.session.key, sessionExpire);
 
 				return cb();
 			}

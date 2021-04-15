@@ -127,3 +127,78 @@ describe('Basics', function () {
 		});
 	});
 });
+
+describe('With sessionExpire set to 30 days', function () {
+	const sessionExpire = 30;
+	const expireSession  = new Session({'db': db, 'log': log, 'sessionExpire': sessionExpire});
+
+	let httpPort;
+	let app;
+
+	it('Setup http server', function (done) {
+		freeport(function (err, port) {
+			let found = false;
+
+			if (err) throw err;
+
+			httpPort = port;
+
+			app = new App({
+				'log':         log,
+				'httpOptions': port,
+				'middlewares': [function (req, res, cb) {
+					if (JSON.stringify(req.session.data) === '{}') {
+						req.session.data = 'hej test test';
+					} else {
+						found	= true;
+						assert.strictEqual(req.session.data, 'hej test test');
+					}
+
+					res.end('gordon');
+
+					cb();
+				}]
+			});
+
+			app.middlewares.unshift(function (req, res, cb) { expireSession.start(req, res, cb); });
+			app.middlewares.unshift(require('cookies').express());
+			app.middlewares.push(function (req, res, cb) { expireSession.writeToDb(req, res, cb); });
+
+			app.start(function (err) {
+				if (err) throw err;
+				request('http://localhost:' + port, function (err) {
+					if (err) throw err;
+					request('http://localhost:' + port, function (err, response, body) {
+						if (err) throw err;
+						assert.strictEqual(body, 'gordon');
+						assert.strictEqual(found, true);
+						done();
+					});
+				});
+			});
+		});
+	});
+
+	it('Check that the session cookie expires in 30 days', function (done) {
+		request('http://localhost:' + httpPort, function (err, response) {
+			if (err) throw err;
+
+			const cookie = response.headers['set-cookie'][0];
+			const splitCookie = cookie.split(';');
+
+			for (const sc of splitCookie) {
+				if (sc.trim().startsWith('expires')) {
+					const expires = sc.replace('expires=', '').trim();
+					const dateExpires = new Date(expires);
+					const dateNow = new Date();
+					const difference = dateExpires.getTime() - dateNow.getTime();
+					const days = Math.ceil(difference / (1000 * 3600 * 24));
+
+					assert.strictEqual(days, sessionExpire);
+				}
+			}
+
+			done();
+		});
+	});
+});
