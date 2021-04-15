@@ -16,7 +16,7 @@
   },
   "description": "Session handling module for node.js",
   "devDependencies": {
-    "cookies": "0.7.3",
+    "cookies": "0.8.0",
     "eslint": "5.16.0",
     "freeport": "1.0.5",
     "istanbul": "0.4.5",
