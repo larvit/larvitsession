@@ -11,7 +11,7 @@
     "larvitdb": "^2.0.0",
     "larvitdbmigration": "^4.0.0",
     "larvitutils": "^2.0.0",
-    "uuid": "^3.0.1",
+    "uuid": "^8.0.0",
     "uuid-validate": "^0.0.3"
   },
   "description": "Session handling module for node.js",
