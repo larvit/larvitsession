@@ -9,7 +9,7 @@
   "contributors": [],
   "dependencies": {
     "larvitdb": "^2.0.0",
-    "larvitdbmigration": "^4.0.0",
+    "larvitdbmigration": "^4.0.2",
     "larvitutils": "^2.0.0",
     "uuid": "^3.0.1",
     "uuid-validate": "^0.0.3"
