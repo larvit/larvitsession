@@ -6,6 +6,7 @@ const request  = require('request').defaults({'jar': true});
 const assert   = require('assert');
 const LUtils   = require('larvitutils');
 const lUtils   = new LUtils();
+const uuid     = require('uuid');
 const App      = require('larvitbase');
 const log      = new lUtils.Log('warn');
 const fs       = require('fs');
@@ -38,7 +39,11 @@ before(function (done) {
 		db.setup(conf, function (err) {
 			if (err) throw err;
 
-			checkEmptyDb();
+			db.removeAllTables(function (err) {
+				if (err) throw err;
+
+				checkEmptyDb();
+			});
 		});
 	}
 	/* eslint-enable require-jsdoc */
@@ -124,6 +129,39 @@ describe('Basics', function () {
 					done(); // At least we know the sessions table have been created....
 				});
 			});
+		});
+	});
+
+	it('Creates a session cookie in the response with proper attributes', function (done) {
+		const jar = request.jar();
+
+		request('http://localhost:' + httpPort, { jar }, function (err, res) {
+			if (err) throw err;
+
+			assert.ok(res.headers['set-cookie']);
+			assert.strictEqual(res.headers['set-cookie'].length, 1);
+
+			const cookieStr = res.headers['set-cookie'][0];
+			const cookieValues = cookieStr
+				.split(';')
+				.map(keyValueStr => keyValueStr.split('='))
+				.reduce((result, keyValueArr) => {
+					result[keyValueArr[0].trim()] = keyValueArr[1] || true;
+
+					return result;
+				}, {});
+
+			assert.strictEqual(Object.keys(cookieValues).length, 3);
+
+			const session = cookieValues.session;
+			const path = cookieValues.path;
+			const httpOnly = cookieValues.httponly;
+
+			assert.ok(uuid.validate(session));
+			assert.strictEqual(path, '/');
+			assert.strictEqual(httpOnly, true);
+
+			done();
 		});
 	});
 });
