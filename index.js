@@ -15,6 +15,8 @@ const Events       = require('events');
  * 	'deleteLimit': limit number of delete during cleanup of old sessions
  * 	'deleteKeepDays': number of days to keep during cleanup of old sessions
  * 	'sessionExpire': number of days to keep the session cookie alive. Expire will be set to 'session' if undefined
+ * 	'cookieSameSite': string that sets the SameSite session cookie option, defaults to not being set at all (browser will default). 'strict', 'lax', 'none', 'false' or 'true' (maps to strict).
+ * 	'cookieSecure': boolean that sets the secure session cookie option. Defaults to false for http and true for https if not set.
  *
  * // Optional
  * 	'log': instance of log object
@@ -41,6 +43,8 @@ function Session(options) {
 	that.deleteLimit = options.deleteLimit || 100;
 	that.deleteKeepDays = options.deleteKeepDays || 10;
 	that.sessionExpire = options.sessionExpire;
+	that.cookieSameSite = options.cookieSameSite;
+	that.cookieSecure = options.cookieSecure;
 }
 
 Session.prototype.ready = function ready(cb) {
@@ -91,13 +95,17 @@ Session.prototype.start = function start(req, res, cb) {
 	const logPrefix = topLogPrefix + 'start() - ';
 	const that      = this;
 
-	let sessionExpire = undefined;
+	const cookieOptions = {
+		'sameSite':  that.cookieSameSite,
+		'secure':    that.cookieSecure,
+		'overwrite': true
+	};
 
 	if (that.sessionExpire) {
 		const d = new Date();
 
 		d.setTime(d.getTime() + (that.sessionExpire * 24 * 60 * 60 * 1000));
-		sessionExpire = { 'expires': d };
+		cookieOptions['expires'] = d;
 	}
 
 	/**
@@ -132,15 +140,12 @@ Session.prototype.start = function start(req, res, cb) {
 			that.log.silly(subLogPrefix + 'sessionKey is undefined, set a new, random uuid');
 
 			req.session.key	= uuidLib.v4();
-			req.cookies.set(cookieName, req.session.key, sessionExpire);
+			req.cookies.set(cookieName, req.session.key, cookieOptions);
 
 			return cb();
 		}
 
-		// If we have sessionExpire, update the cookie to update the expires date
-		if (sessionExpire) {
-			req.cookies.set(cookieName, req.session.key, sessionExpire);
-		}
+		req.cookies.set(cookieName, req.session.key, cookieOptions);
 
 		that.log.silly(subLogPrefix + 'A session key was found, validate it and load from database');
 
@@ -155,7 +160,7 @@ Session.prototype.start = function start(req, res, cb) {
 
 				// Always set a new, random uuid to make sure no one manually sets their own session uuid to spoof the system
 				req.session.key = uuidLib.v4();
-				req.cookies.set(cookieName, req.session.key, sessionExpire);
+				req.cookies.set(cookieName, req.session.key, cookieOptions);
 
 				return cb();
 			}

@@ -11,7 +11,6 @@ const App      = require('larvitbase');
 const log      = new lUtils.Log('warn');
 const fs       = require('fs');
 const db       = require('larvitdb');
-const session  = new Session({'db': db, 'log': log});
 
 before(function (done) {
 	/* eslint-disable require-jsdoc */
@@ -68,100 +67,157 @@ after(function (done) {
 	}, 1000);
 });
 
-describe('Basics', function () {
+const createWebServer = (session, cb) => {
+	if (typeof session === 'function') {
+		cb = session;
+		session = new Session({'db': db, 'log': log});
+	}
+
 	let httpPort;
 	let app;
 
-	it('Setup http server', function (done) {
-		freeport(function (err, port) {
-			let found = false;
+	freeport(function (err, port) {
+		if (err) throw err;
 
+		httpPort = port;
+
+		app = new App({
+			'log':         log,
+			'httpOptions': port,
+			'middlewares': [function (req, res, cb) {
+				if (JSON.stringify(req.session.data) === '{}') {
+					req.session.data = 'hej test test';
+				} else {
+					assert.strictEqual(req.session.data, 'hej test test');
+				}
+
+				res.end('gordon');
+
+				cb();
+			}]
+		});
+
+		app.middlewares.unshift(function (req, res, cb) { session.start(req, res, cb); });
+		app.middlewares.unshift(require('cookies').express());
+		app.middlewares.push(function (req, res, cb) { session.writeToDb(req, res, cb); });
+
+		app.start(function (err) {
 			if (err) throw err;
 
-			httpPort = port;
+			return cb({app, 'port': httpPort});
+		});
+	});
+};
 
-			app = new App({
-				'log':         log,
-				'httpOptions': port,
-				'middlewares': [function (req, res, cb) {
-					if (JSON.stringify(req.session.data) === '{}') {
-						req.session.data = 'hej test test';
-					} else {
-						found	= true;
-						assert.strictEqual(req.session.data, 'hej test test');
-					}
-
-					res.end('gordon');
-
-					cb();
-				}]
-			});
-
-			app.middlewares.unshift(function (req, res, cb) { session.start(req, res, cb); });
-			app.middlewares.unshift(require('cookies').express());
-			app.middlewares.push(function (req, res, cb) { session.writeToDb(req, res, cb); });
-
-			app.start(function (err) {
+describe('Basics', function () {
+	it('Setup http server', function (done) {
+		createWebServer(context => {
+			request('http://localhost:' + context.port, function (err) {
 				if (err) throw err;
-				request('http://localhost:' + port, function (err) {
+				request('http://localhost:' + context.port, function (err, response, body) {
 					if (err) throw err;
-					request('http://localhost:' + port, function (err, response, body) {
-						if (err) throw err;
-						assert.strictEqual(body, 'gordon');
-						assert.strictEqual(found, true);
-						done();
-					});
+					assert.strictEqual(body, 'gordon');
+					done();
 				});
 			});
 		});
 	});
 
 	it('Testing if sessions table got created', function (done) {
-		request('http://localhost:' + httpPort, function (err) {
-			if (err) throw err;
-			db.query('SELECT * FROM sessions', function (err, result) {
+		createWebServer(context => {
+			request('http://localhost:' + context.port, function (err) {
 				if (err) throw err;
-
-				assert.strictEqual(JSON.parse(result[0].json), 'hej test test');
-
-				request('http://localhost:' + httpPort, function (err) {
+				db.query('SELECT * FROM sessions', function (err, result) {
 					if (err) throw err;
-					done(); // At least we know the sessions table have been created....
+
+					assert.strictEqual(JSON.parse(result[0].json), 'hej test test');
+
+					request('http://localhost:' + context.port, function (err) {
+						if (err) throw err;
+						done(); // At least we know the sessions table have been created....
+					});
 				});
 			});
 		});
 	});
 
 	it('Creates a session cookie in the response with proper attributes', function (done) {
+		const session = new Session({'db': db, 'log': log, 'cookieSameSite': 'none', 'cookieSecure': false});
 		const jar = request.jar();
 
-		request('http://localhost:' + httpPort, { jar }, function (err, res) {
-			if (err) throw err;
+		createWebServer(session, context => {
+			request('http://localhost:' + context.port, { jar }, function (err, res) {
+				if (err) throw err;
 
-			assert.ok(res.headers['set-cookie']);
-			assert.strictEqual(res.headers['set-cookie'].length, 1);
+				assert.ok(res.headers['set-cookie']);
+				assert.strictEqual(res.headers['set-cookie'].length, 1);
 
-			const cookieStr = res.headers['set-cookie'][0];
-			const cookieValues = cookieStr
-				.split(';')
-				.map(keyValueStr => keyValueStr.split('='))
-				.reduce((result, keyValueArr) => {
-					result[keyValueArr[0].trim()] = keyValueArr[1] || true;
+				const cookieStr = res.headers['set-cookie'][0];
+				const cookieValues = cookieStr
+					.split(';')
+					.map(keyValueStr => keyValueStr.split('='))
+					.reduce((result, keyValueArr) => {
+						result[keyValueArr[0].trim()] = keyValueArr[1] || true;
 
-					return result;
-				}, {});
+						return result;
+					}, {});
 
-			assert.strictEqual(Object.keys(cookieValues).length, 3);
+				console.log(`Cookie: ${cookieStr}`);
 
-			const session = cookieValues.session;
-			const path = cookieValues.path;
-			const httpOnly = cookieValues.httponly;
+				assert.strictEqual(Object.keys(cookieValues).length, 4);
 
-			assert.ok(uuid.validate(session));
-			assert.strictEqual(path, '/');
-			assert.strictEqual(httpOnly, true);
+				const session = cookieValues.session;
+				const path = cookieValues.path;
+				const httpOnly = cookieValues.httponly;
+				const sameSite = cookieValues.samesite;
+				const secure = cookieValues.secure;
 
-			done();
+				assert.ok(uuid.validate(session));
+				assert.strictEqual(path, '/');
+				assert.strictEqual(httpOnly, true);
+				assert.strictEqual(sameSite, 'none');
+				assert.strictEqual(secure, undefined);
+
+				done();
+			});
+		});
+	});
+
+	it('Having session set to something that is not in db should result in new session value in response', function (done) {
+		const jar = request.jar();
+		const requestSessionUuid = uuid.v4();
+		const headers = {
+			'Cookie': `session=${requestSessionUuid}`
+		};
+
+		createWebServer(context => {
+			request('http://localhost:' + context.port, { headers, jar }, function (err, res) {
+				if (err) throw err;
+
+				assert.ok(res.headers['set-cookie']);
+				assert.strictEqual(res.headers['set-cookie'].length, 1);
+
+				const cookieStr = res.headers['set-cookie'][0];
+				const cookieValues = cookieStr
+					.split(';')
+					.map(keyValueStr => keyValueStr.split('='))
+					.reduce((result, keyValueArr) => {
+						result[keyValueArr[0].trim()] = keyValueArr[1] || true;
+
+						return result;
+					}, {});
+
+				console.log(`Cookie: ${cookieStr}`);
+
+				assert.strictEqual(Object.keys(cookieValues).length, 3);
+
+				const session = cookieValues.session;
+
+				assert.ok(uuid.validate(session));
+				assert.notStrictEqual(uuid, requestSessionUuid);
+
+				done();
+			});
 		});
 	});
 });
@@ -170,73 +226,28 @@ describe('With sessionExpire set to 30 days', function () {
 	const sessionExpire = 30;
 	const expireSession  = new Session({'db': db, 'log': log, 'sessionExpire': sessionExpire});
 
-	let httpPort;
-	let app;
-
-	it('Setup http server', function (done) {
-		freeport(function (err, port) {
-			let found = false;
-
-			if (err) throw err;
-
-			httpPort = port;
-
-			app = new App({
-				'log':         log,
-				'httpOptions': port,
-				'middlewares': [function (req, res, cb) {
-					if (JSON.stringify(req.session.data) === '{}') {
-						req.session.data = 'hej test test';
-					} else {
-						found	= true;
-						assert.strictEqual(req.session.data, 'hej test test');
-					}
-
-					res.end('gordon');
-
-					cb();
-				}]
-			});
-
-			app.middlewares.unshift(function (req, res, cb) { expireSession.start(req, res, cb); });
-			app.middlewares.unshift(require('cookies').express());
-			app.middlewares.push(function (req, res, cb) { expireSession.writeToDb(req, res, cb); });
-
-			app.start(function (err) {
-				if (err) throw err;
-				request('http://localhost:' + port, function (err) {
-					if (err) throw err;
-					request('http://localhost:' + port, function (err, response, body) {
-						if (err) throw err;
-						assert.strictEqual(body, 'gordon');
-						assert.strictEqual(found, true);
-						done();
-					});
-				});
-			});
-		});
-	});
-
 	it('Check that the session cookie expires in 30 days', function (done) {
-		request('http://localhost:' + httpPort, function (err, response) {
-			if (err) throw err;
+		createWebServer(expireSession, context => {
+			request('http://localhost:' + context.port, function (err, response) {
+				if (err) throw err;
 
-			const cookie = response.headers['set-cookie'][0];
-			const splitCookie = cookie.split(';');
+				const cookie = response.headers['set-cookie'][0];
+				const splitCookie = cookie.split(';');
 
-			for (const sc of splitCookie) {
-				if (sc.trim().startsWith('expires')) {
-					const expires = sc.replace('expires=', '').trim();
-					const dateExpires = new Date(expires);
-					const dateNow = new Date();
-					const difference = dateExpires.getTime() - dateNow.getTime();
-					const days = Math.ceil(difference / (1000 * 3600 * 24));
+				for (const sc of splitCookie) {
+					if (sc.trim().startsWith('expires')) {
+						const expires = sc.replace('expires=', '').trim();
+						const dateExpires = new Date(expires);
+						const dateNow = new Date();
+						const difference = dateExpires.getTime() - dateNow.getTime();
+						const days = Math.ceil(difference / (1000 * 3600 * 24));
 
-					assert.strictEqual(days, sessionExpire);
+						assert.strictEqual(days, sessionExpire);
+					}
 				}
-			}
 
-			done();
+				done();
+			});
 		});
 	});
 });
