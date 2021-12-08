@@ -1,11 +1,14 @@
+/* eslint-disable multiline-ternary */
 'use strict';
 
+const { DateTime } = require('luxon');
 const freeport = require('freeport');
 const Session  = require('../index.js');
 const request  = require('request').defaults({'jar': true});
 const assert   = require('assert');
 const LUtils   = require('larvitutils');
 const lUtils   = new LUtils();
+const async    = require('async');
 const uuid     = require('uuid');
 const App      = require('larvitbase');
 const log      = new lUtils.Log('warn');
@@ -67,11 +70,14 @@ after(function (done) {
 	}, 1000);
 });
 
-const createWebServer = (session, cb) => {
-	if (typeof session === 'function') {
-		cb = session;
-		session = new Session({'db': db, 'log': log});
+const createWebServer = (options, cb) => {
+	if (typeof options === 'function') {
+		cb = options;
+		options = {};
 	}
+
+	options.session = options.session || new Session({'db': db, 'log': log});
+	options.sessionData = options.sessionData || 'hej test test';
 
 	let httpPort;
 	let app;
@@ -85,11 +91,9 @@ const createWebServer = (session, cb) => {
 			'log':         log,
 			'httpOptions': port,
 			'middlewares': [function (req, res, cb) {
-				if (JSON.stringify(req.session.data) === '{}') {
-					req.session.data = 'hej test test';
-				} else {
-					assert.strictEqual(req.session.data, 'hej test test');
-				}
+				req.session.data = typeof options.sessionData === 'function'
+					? options.sessionData()
+					: options.sessionData;
 
 				res.end('gordon');
 
@@ -97,9 +101,9 @@ const createWebServer = (session, cb) => {
 			}]
 		});
 
-		app.middlewares.unshift(function (req, res, cb) { session.start(req, res, cb); });
+		app.middlewares.unshift(function (req, res, cb) { options.session.start(req, res, cb); });
 		app.middlewares.unshift(require('cookies').express());
-		app.middlewares.push(function (req, res, cb) { session.writeToDb(req, res, cb); });
+		app.middlewares.push(function (req, res, cb) { options.session.writeToDb(req, res, cb); });
 
 		app.start(function (err) {
 			if (err) throw err;
@@ -141,11 +145,114 @@ describe('Basics', function () {
 		});
 	});
 
+	it('Should remove old sessions on demand', function (done) {
+		const jar = request.jar();
+		const session = new Session({'db': db, 'log': log, 'deleteKeepDays': 1});
+		let testSessionData = 'remove on demand test data';
+
+		// eslint-disable-next-line require-jsdoc
+		function getSessionData() {
+			return testSessionData;
+		}
+
+		createWebServer({ session, 'sessionData': getSessionData }, context => {
+			// Create session
+			request('http://localhost:' + context.port, { jar }, function (err) {
+				if (err) throw err;
+				db.query('SELECT * FROM sessions WHERE json = \'"remove on demand test data"\'', function (err, result) {
+					if (err) throw err;
+					assert.strictEqual(JSON.parse(result[0].json), 'remove on demand test data');
+
+					// Hack to make a session old
+					const expiredDate = DateTime
+						.utc()
+						.minus({'days': 2})
+						.toISODate();
+
+					let expireSessionSql = `UPDATE sessions SET updated = '${expiredDate}'
+											WHERE json = '"remove on demand test data"'`;
+
+					db.query(expireSessionSql, function (err) {
+						if (err) throw err;
+
+						// Delete old sessions
+						session.deleteOldSessions(function (err) {
+							if (err) throw err;
+
+							// Verify that session is deleted
+							db.query('SELECT * FROM sessions WHERE json = \'"remove on demand test data"\'', function (err, result) {
+								assert.strictEqual(result.length, 0);
+
+								done();
+							});
+						});
+					});
+				});
+			});
+		});
+	});
+
+	it('Should remove old sessions on write', function (done) {
+		const jar = request.jar();
+		const session = new Session({'db': db, 'log': log, 'deleteKeepDays': 1});
+		let testSessionData = 'remove on delete data';
+
+		// eslint-disable-next-line require-jsdoc
+		function getSessionData() {
+			return testSessionData;
+		}
+
+		createWebServer({ session, 'sessionData': getSessionData }, context => {
+			// Create session
+			request('http://localhost:' + context.port, { jar }, function (err) {
+				if (err) throw err;
+				db.query('SELECT * FROM sessions WHERE json = \'"remove on delete data"\'', function (err, result) {
+					if (err) throw err;
+					assert.strictEqual(JSON.parse(result[0].json), 'remove on delete data');
+
+					// Hack to make a session old
+					const expiredDate = DateTime
+						.utc()
+						.minus({'days': 2})
+						.toISODate();
+
+					let expireSessionSql = `UPDATE sessions SET updated = '${expiredDate}'
+											WHERE json = '"remove on delete data"'`;
+
+					db.query(expireSessionSql, function (err) {
+						if (err) throw err;
+
+						// Delete old sessions on next write (another session)
+						testSessionData = 'another session that should delete the first one';
+						request('http://localhost:' + context.port, { 'jar': request.jar() }, function (err) {
+							if (err) throw err;
+
+							// Verify that session is deleted (deletion is async so can take a while)
+							async.retry({ 'times': 100, 'interval': 100 }, function (cb) {
+								db.query('SELECT * FROM sessions WHERE json = \'"remove on delete data"\'', function (err, result) {
+									if (result.length !== 0) {
+										return cb(new Error('Session has not been removed'));
+									}
+
+									cb();
+								});
+							}, function (err) {
+								if (err) throw err;
+
+								done();
+							});
+						});
+					});
+				});
+			});
+		});
+	}).timeout(10000);
+
 	it('Creates a session cookie in the response with proper attributes', function (done) {
 		const session = new Session({'db': db, 'log': log, 'cookieSameSite': 'none', 'cookieSecure': false});
 		const jar = request.jar();
 
-		createWebServer(session, context => {
+		createWebServer({ session }, context => {
 			request('http://localhost:' + context.port, { jar }, function (err, res) {
 				if (err) throw err;
 
@@ -227,7 +334,7 @@ describe('With sessionExpire set to 30 days', function () {
 	const expireSession  = new Session({'db': db, 'log': log, 'sessionExpire': sessionExpire});
 
 	it('Check that the session cookie expires in 30 days', function (done) {
-		createWebServer(expireSession, context => {
+		createWebServer({ 'session': expireSession }, context => {
 			request('http://localhost:' + context.port, function (err, response) {
 				if (err) throw err;
 

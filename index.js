@@ -14,6 +14,7 @@ const Events       = require('events');
  * 	'db': instance of db object
  * 	'deleteLimit': limit number of delete during cleanup of old sessions
  * 	'deleteKeepDays': number of days to keep during cleanup of old sessions
+ * 	'deleteOnWrite': boolean that tells if old sessions should be deleted on write, defaults to true.
  * 	'sessionExpire': number of days to keep the session cookie alive. Expire will be set to 'session' if undefined
  * 	'cookieSameSite': string that sets the SameSite session cookie option, defaults to not being set at all (browser will default). 'strict', 'lax', 'none', 'false' or 'true' (maps to strict).
  * 	'cookieSecure': boolean that sets the secure session cookie option. Defaults to false for http and true for https if not set.
@@ -42,6 +43,7 @@ function Session(options) {
 	that.db  = that.options.db;
 	that.deleteLimit = options.deleteLimit || 100;
 	that.deleteKeepDays = options.deleteKeepDays || 10;
+	that.deleteOnWrite = options.deleteOnWrite === undefined ? true : options.deleteOnWrite;
 	that.sessionExpire = options.sessionExpire;
 	that.cookieSameSite = options.cookieSameSite;
 	that.cookieSecure = options.cookieSecure;
@@ -276,17 +278,33 @@ Session.prototype.writeToDb = function writeToDb(req, res, cb) {
 		that.db.query(sql, dbFields, function (err) {
 			cb(err);
 
-			// Clean up old entries
-			let sql = `DELETE FROM sessions WHERE updated < DATE_SUB(NOW(), INTERVAL ${that.deleteKeepDays} DAY)`;
-
-			if (that.deleteLimit) {
-				sql += ` LIMIT ${that.deleteLimit}`;
+			if (that.deleteOnWrite) {
+				that.deleteOldSessions(function () {});
 			}
-
-			sql += ';';
-
-			that.db.query(sql);
 		});
+	});
+};
+
+Session.prototype.deleteOldSessions = function deleteOldSessions(cb) {
+	const logPrefix = topLogPrefix + 'deleteOldSessions() - ';
+	const that      = this;
+
+	let sql = `DELETE FROM sessions WHERE updated < DATE_SUB(NOW(), INTERVAL ${that.deleteKeepDays} DAY)`;
+
+	if (that.deleteLimit) {
+		sql += ` LIMIT ${that.deleteLimit}`;
+	}
+
+	sql += ';';
+
+	that.log.info(`${logPrefix}Deleting old sessions, deleteKeepDays: ${that.deleteKeepDays}, deleteLimit: ${that.deleteLimit}`);
+
+	that.db.query(sql, function (err) {
+		if (err) return cb(err);
+
+		that.log.verbose('Old sessions deleted');
+
+		cb();
 	});
 };
 
