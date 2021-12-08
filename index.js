@@ -242,7 +242,7 @@ Session.prototype.writeToDb = function writeToDb(req, res, cb) {
 	const logPrefix = topLogPrefix + 'writeToDb() - ';
 	const dbFields  = [];
 	const that      = this;
-	const sql       = 'REPLACE INTO sessions (uuid, json) VALUES(?,?)';
+	const sql       = 'INSERT INTO sessions (uuid, json) VALUES(?,?) ON DUPLICATE KEY UPDATE json = VALUES(json)';
 
 	try {
 		dbFields.push(req.session.key);

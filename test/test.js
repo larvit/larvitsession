@@ -15,6 +15,21 @@ const log      = new lUtils.Log('warn');
 const fs       = require('fs');
 const db       = require('larvitdb');
 
+// eslint-disable-next-line require-jsdoc
+function getSessionKeyFromResponse(res) {
+	const cookieStr = res.headers['set-cookie'][0];
+	const cookieValues = cookieStr
+		.split(';')
+		.map(keyValueStr => keyValueStr.split('='))
+		.reduce((result, keyValueArr) => {
+			result[keyValueArr[0].trim()] = keyValueArr[1] || true;
+
+			return result;
+		}, {});
+
+	return cookieValues.session;
+}
+
 before(function (done) {
 	/* eslint-disable require-jsdoc */
 	function checkEmptyDb() {
@@ -139,6 +154,44 @@ describe('Basics', function () {
 					request('http://localhost:' + context.port, function (err) {
 						if (err) throw err;
 						done(); // At least we know the sessions table have been created....
+					});
+				});
+			});
+		});
+	});
+
+	it('Should update session data', function (done) {
+		const jar = request.jar();
+		const session = new Session({'db': db, 'log': log});
+		let testSessionData = 'first data';
+		let sessionUuid = '';
+
+		// eslint-disable-next-line require-jsdoc
+		function getSessionData() {
+			return testSessionData;
+		}
+
+		createWebServer({ session, 'sessionData': getSessionData }, context => {
+			// Create session
+			request('http://localhost:' + context.port, { jar }, function (err, res) {
+				if (err) throw err;
+				sessionUuid = getSessionKeyFromResponse(res);
+
+				db.query('SELECT * FROM sessions WHERE uuid = ?;', [sessionUuid], function (err, result) {
+					if (err) throw err;
+					assert.strictEqual(JSON.parse(result[0].json), 'first data');
+
+					// Update session with new data
+					testSessionData = 'updated data';
+					request('http://localhost:' + context.port, { jar }, function (err) {
+						if (err) throw err;
+
+						// Verify that session is deleted
+						db.query('SELECT * FROM sessions WHERE uuid = ?', [sessionUuid], function (err, result) {
+							assert.strictEqual(JSON.parse(result[0].json), 'updated data');
+
+							done();
+						});
 					});
 				});
 			});
