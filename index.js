@@ -286,7 +286,7 @@ Session.prototype.writeToDb = function writeToDb(req, res, cb) {
 };
 
 Session.prototype.deleteOldSessions = function deleteOldSessions(cb) {
-	const logPrefix = topLogPrefix + 'deleteOldSessions() - ';
+	const logPrefix = topLogPrefix + 'deleteOldSessions() -';
 	const that      = this;
 
 	let sql = `DELETE FROM sessions WHERE updated < DATE_SUB(NOW(), INTERVAL ${that.deleteKeepDays} DAY)`;
@@ -297,12 +297,12 @@ Session.prototype.deleteOldSessions = function deleteOldSessions(cb) {
 
 	sql += ';';
 
-	that.log.info(`${logPrefix}Deleting old sessions, deleteKeepDays: ${that.deleteKeepDays}, deleteLimit: ${that.deleteLimit}`);
+	that.log.debug(`${logPrefix} Deleting old sessions, deleteKeepDays: ${that.deleteKeepDays}, deleteLimit: ${that.deleteLimit}`);
 
-	that.db.query(sql, function (err) {
+	that.db.query(sql, function (err, result) {
 		if (err) return cb(err);
 
-		that.log.verbose('Old sessions deleted');
+		that.log.verbose(`${logPrefix} ${result.affectedRows} old session(s) deleted`);
 
 		cb();
 	});
