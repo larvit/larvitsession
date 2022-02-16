@@ -8,7 +8,7 @@
   },
   "contributors": [],
   "dependencies": {
-    "larvitdb": "^2.0.0",
+    "larvitdb": "^3.0.0",
     "larvitdbmigration": "^4.0.0",
     "larvitutils": "^2.0.0",
     "uuid": "^8.3.2",
