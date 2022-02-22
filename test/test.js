@@ -11,10 +11,11 @@ const axios = require('axios').default;
 const Db = require('larvitdb');
 const freeport = require('freeport');
 const fs = require('fs');
+const path = require('path');
 const Session = require('../index');
 const uuid = require('uuid');
 
-const log = new Log('error');
+const log = new Log('verbose');
 let db;
 
 function getSessionKeyFromResponse(res) {
@@ -34,18 +35,19 @@ function getSessionKeyFromResponse(res) {
 before(async () => {
 	wrapper(axios);
 
-	async function runDbSetup(confFile) {
+	function runDbSetup(confFile) {
+		log.verbose('larvitsession: DB config file: "' + confFile + '"');
+
 		const conf = require(confFile);
+		log.verbose('larvitsession: DB config: ' + JSON.stringify(conf, undefined, 2));
 
 		conf.log = log;
-		log.verbose('larvitsession: DB config file: "' + confFile + '"');
-		log.verbose('larvitsession: DB config: ' + JSON.stringify(conf, undefined, 2));
 
 		db = new Db(conf);
 	}
 
-	if (fs.existsSync(__dirname + '/../config/db_test.json')) {
-		runDbSetup('../config/db_test.json');
+	if (fs.existsSync(path.join(__dirname, '/../config/db_test.json'))) {
+		runDbSetup(path.join(__dirname, '/../config/db_test.json'));
 	} else if (process.env.DB_CONF_FILE && fs.existsSync(process.cwd() + '/' + process.env.DB_CONF_FILE)) {
 		runDbSetup(process.cwd() + '/' + process.env.DB_CONF_FILE);
 	} else {
@@ -58,6 +60,8 @@ after(async () => {
 });
 
 const createWebServer = async options => {
+	log.verbose('Creating test web server');
+
 	await db.removeAllTables();
 
 	options = options || {};
