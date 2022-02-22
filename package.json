@@ -1,6 +1,6 @@
 {
   "name": "larvitsession",
-  "version": "5.3.2",
+  "version": "6.0.0",
   "author": {
     "name": "Mikael 'Lilleman' Göransson",
     "email": "lilleman@larvit.se",
@@ -8,35 +8,42 @@
   },
   "contributors": [],
   "dependencies": {
-    "larvitdb": "^2.0.0",
-    "larvitdbmigration": "^4.0.0",
-    "larvitutils": "^2.0.0",
-    "uuid": "^8.3.2",
-    "uuid-validate": "^0.0.3"
+    "larvitdb": "3.2.0",
+    "larvitdbmigration": "6.1.0",
+    "larvitutils": "5.0.0",
+    "uuid": "8.3.2"
   },
   "description": "Session handling module for node.js",
   "devDependencies": {
-    "async": "^3.2.2",
+    "async": "3.2.3",
+    "axios": "0.26.0",
+    "axios-cookiejar-support": "2.0.3",
     "cookies": "0.8.0",
-    "eslint": "5.16.0",
+    "eslint": "8.9.0",
     "freeport": "1.0.5",
-    "istanbul": "0.4.5",
-    "larvitbase": "3.1.3",
-    "luxon": "^2.1.1",
-    "mocha": "6.1.3",
-    "mocha-eslint": "5.0.0",
-    "request": "2.88.0"
+    "larvitbase": "4.0.0",
+    "luxon": "2.3.0",
+    "mocha": "9.2.1",
+    "nyc": "15.1.0",
+    "tough-cookie": "4.0.0"
   },
   "keywords": [
     "session"
   ],
   "main": "index.js",
+  "files": [
+    "*.js",
+    "dbmigration/"
+  ],
   "repository": {
     "url": "https://github.com/larvit/larvitsession",
     "type": "git"
   },
   "scripts": {
-    "test": "mocha"
+    "lint": "eslint *.js test/*.js",
+    "test:unit": "mocha --exit --bail 'test/**/*.js'",
+    "test:cov": "nyc --reporter=lcov --reporter=text-summary npm run test:unit",
+    "test": "npm run lint && npm run test:cov"
   },
   "readmeFilename": "README.md",
   "license": "ISC"

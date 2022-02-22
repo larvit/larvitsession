@@ -1,5 +1,4 @@
-[![Build Status](https://travis-ci.org/larvit/larvitsession.svg?branch=master)](https://travis-ci.org/larvit/larvitsession) [![Dependencies](https://david-dm.org/larvit/larvitsession.svg)](https://david-dm.org/larvit/larvitsession.svg)
-[![Coverage Status](https://coveralls.io/repos/github/larvit/larvitbase-www/badge.svg)](https://coveralls.io/github/larvit/larvitbase-www)
+[![Build Status](https://github.com/larvit/larvitsession/actions/workflows/actions.yml/badge.svg)](https://github.com/larvit/larvitsession/actions)
 
 # larvitsession
 
@@ -12,33 +11,33 @@ The given example sets up larvitsession as a middleware to larvitbase. At the mo
 ```javascript
 const Session = require('larvitsession');
 const winston = require('winston');
-const log = winston.createLogger({'transports': [new winston.transports.Console()]});
+const log = winston.createLogger({transports: [new winston.transports.Console()]});
 const App = require('larvitbase');
-const db = require('larvitdb');
+const Db = require('larvitdb');
 
 let session;
 let conf;
 let app;
 
-db.setup({
-	"connectionLimit":   10,
-	"socketPath":        "/var/run/mysqld/mysqld.sock",
-	"user":              "foo",
-	"password":          "bar",
-	"charset":           "utf8mb4_general_ci",
-	"supportBigNumbers": true,
-	"database":          "dbname"
+const db = new Db({
+	connectionLimit:   10,
+	socketPath:        "/var/run/mysqld/mysqld.sock",
+	user:              "foo",
+	password:          "bar",
+	charset:           "utf8mb4_general_ci",
+	supportBigNumbers: true,
+	database:          "dbname"
 });
 
 session = new Session({
-	'db':  db,
-	'log': log
+	db:  db,
+	log: log
 });
 
 // Create the app with a single middleware to view a page on port 8001
 app = new App({
-	'httpOptions': 8001,
-	'middlewares': [function (req, res, cb) {
+	httpOptions: 8001,
+	middlewares: [function (req, res, cb) {
 		if (req.session.data.counter === undefined) {
 			res.session.data.counter = 1;
 		} else {
@@ -59,3 +58,8 @@ app.run(function (err) {
 	if (err) throw err;
 });
 ```
+
+# Changelog
+## 6.0.0
+- Upped lib versions
+- Replaced callbacks with promises (not for the start/writeToDb middlewares)

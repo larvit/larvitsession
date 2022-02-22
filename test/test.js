@@ -1,21 +1,22 @@
-/* eslint-disable multiline-ternary */
 'use strict';
 
+const { CookieJar } = require('tough-cookie');
 const { DateTime } = require('luxon');
+const { Log } = require('larvitutils');
+const { wrapper } = require('axios-cookiejar-support');
+const App = require('larvitbase');
+const assert = require('assert');
+const async = require('async');
+const axios = require('axios').default;
+const Db = require('larvitdb');
 const freeport = require('freeport');
-const Session  = require('../index.js');
-const request  = require('request').defaults({'jar': true});
-const assert   = require('assert');
-const LUtils   = require('larvitutils');
-const lUtils   = new LUtils();
-const async    = require('async');
-const uuid     = require('uuid');
-const App      = require('larvitbase');
-const log      = new lUtils.Log('warn');
-const fs       = require('fs');
-const db       = require('larvitdb');
+const fs = require('fs');
+const Session = require('../index');
+const uuid = require('uuid');
 
-// eslint-disable-next-line require-jsdoc
+const log = new Log('error');
+let db;
+
 function getSessionKeyFromResponse(res) {
 	const cookieStr = res.headers['set-cookie'][0];
 	const cookieValues = cookieStr
@@ -30,40 +31,18 @@ function getSessionKeyFromResponse(res) {
 	return cookieValues.session;
 }
 
-before(function (done) {
-	/* eslint-disable require-jsdoc */
-	function checkEmptyDb() {
-		db.query('SHOW TABLES', function (err, rows) {
-			if (err) throw err;
+before(async () => {
+	wrapper(axios);
 
-			if (rows.length) {
-				log.error('Database is not empty. To make a test, you must supply an empty database!');
-				assert.deepEqual(rows.length, 0);
-				process.exit(1);
-			}
-
-			done();
-		});
-	}
-
-	function runDbSetup(confFile) {
+	async function runDbSetup(confFile) {
 		const conf = require(confFile);
 
 		conf.log = log;
 		log.verbose('larvitsession: DB config file: "' + confFile + '"');
-		log.verbose('larvitsession: DB config: ' + conf);
+		log.verbose('larvitsession: DB config: ' + JSON.stringify(conf, undefined, 2));
 
-		db.setup(conf, function (err) {
-			if (err) throw err;
-
-			db.removeAllTables(function (err) {
-				if (err) throw err;
-
-				checkEmptyDb();
-			});
-		});
+		db = new Db(conf);
 	}
-	/* eslint-enable require-jsdoc */
 
 	if (fs.existsSync(__dirname + '/../config/db_test.json')) {
 		runDbSetup('../config/db_test.json');
@@ -74,340 +53,362 @@ before(function (done) {
 	}
 });
 
-after(function (done) {
-	// We set a timeout here, since the server will fiddle with the database a bit after the response have been sent
-	setTimeout(function () {
-		db.removeAllTables(function (err) {
-			if (err) throw err;
-			done();
-			process.exit();
-		});
-	}, 1000);
+after(async () => {
+	await db.removeAllTables();
 });
 
-const createWebServer = (options, cb) => {
-	if (typeof options === 'function') {
-		cb = options;
-		options = {};
-	}
+const createWebServer = async options => {
+	await db.removeAllTables();
 
-	options.session = options.session || new Session({'db': db, 'log': log});
+	options = options || {};
+	options.session = options.session || new Session({db, log});
+
+	await options.session.runDbMigrations();
+
 	options.sessionData = options.sessionData || 'hej test test';
 
 	let httpPort;
 	let app;
 
-	freeport(function (err, port) {
-		if (err) throw err;
+	return new Promise((res, rej) => {
+		freeport(function (err, port) {
+			if (err) return rej(err);
 
-		httpPort = port;
+			httpPort = port;
 
-		app = new App({
-			'log':         log,
-			'httpOptions': port,
-			'middlewares': [function (req, res, cb) {
-				req.session.data = typeof options.sessionData === 'function'
-					? options.sessionData()
-					: options.sessionData;
+			app = new App({
+				log: log,
+				httpOptions: port,
+				middlewares: [function (req, res, cb) {
+					req.session.data = typeof options.sessionData === 'function'
+						? options.sessionData()
+						: options.sessionData;
 
-				res.end('gordon');
+					res.end('gordon');
 
-				cb();
-			}]
-		});
+					cb();
+				}],
+			});
 
-		app.middlewares.unshift(function (req, res, cb) { options.session.start(req, res, cb); });
-		app.middlewares.unshift(require('cookies').express());
-		app.middlewares.push(function (req, res, cb) { options.session.writeToDb(req, res, cb); });
+			// Override default if middleware is provided
+			if (options.middleware) app.middlewares = [options.middleware];
 
-		app.start(function (err) {
-			if (err) throw err;
+			app.middlewares.unshift(function (req, res, cb) { options.session.start(req, res, cb); });
+			app.middlewares.unshift(require('cookies').express());
+			app.middlewares.push(function (req, res, cb) { options.session.writeToDb(req, res, cb); });
 
-			return cb({app, 'port': httpPort});
+			app.start(function (err) {
+				if (err) return rej(err);
+
+				return res({app, port: httpPort});
+			});
 		});
 	});
 };
 
-describe('Basics', function () {
-	it('Setup http server', function (done) {
-		createWebServer(context => {
-			request('http://localhost:' + context.port, function (err) {
-				if (err) throw err;
-				request('http://localhost:' + context.port, function (err, response, body) {
-					if (err) throw err;
-					assert.strictEqual(body, 'gordon');
-					done();
-				});
-			});
-		});
+describe('Basics', () => {
+	it('Setup http server', async () => {
+		const context = await createWebServer();
+		const response = await axios('http://localhost:' + context.port);
+		assert.strictEqual(response.data, 'gordon');
 	});
 
-	it('Testing if sessions table got created', function (done) {
-		createWebServer(context => {
-			request('http://localhost:' + context.port, function (err) {
-				if (err) throw err;
-				db.query('SELECT * FROM sessions', function (err, result) {
-					if (err) throw err;
+	it('Testing if sessions table got created', async () => {
+		const context = await createWebServer();
+		await axios('http://localhost:' + context.port);
 
-					assert.strictEqual(JSON.parse(result[0].json), 'hej test test');
-
-					request('http://localhost:' + context.port, function (err) {
-						if (err) throw err;
-						done(); // At least we know the sessions table have been created....
-					});
-				});
-			});
-		});
+		const { rows } = await db.query('SELECT * FROM sessions');
+		assert.strictEqual(rows.length, 1);
+		assert.strictEqual(JSON.parse(rows[0].json), 'hej test test');
 	});
 
-	it('Should update session data', function (done) {
-		const jar = request.jar();
-		const session = new Session({'db': db, 'log': log});
+	it('Should update session data', async () => {
+		const jar = new CookieJar();
+		const session = new Session({db: db, log: log});
 		let testSessionData = 'first data';
 		let sessionUuid = '';
 
-		// eslint-disable-next-line require-jsdoc
-		function getSessionData() {
+		function sessionData() {
 			return testSessionData;
 		}
 
-		createWebServer({ session, 'sessionData': getSessionData }, context => {
-			// Create session
-			request('http://localhost:' + context.port, { jar }, function (err, res) {
-				if (err) throw err;
-				sessionUuid = getSessionKeyFromResponse(res);
+		const context = await createWebServer({ session, sessionData });
 
-				db.query('SELECT * FROM sessions WHERE uuid = ?;', [sessionUuid], function (err, result) {
-					if (err) throw err;
-					assert.strictEqual(JSON.parse(result[0].json), 'first data');
+		// Create session
+		const res = await axios('http://localhost:' + context.port, {jar});
+		sessionUuid = getSessionKeyFromResponse(res);
 
-					// Update session with new data
-					testSessionData = 'updated data';
-					request('http://localhost:' + context.port, { jar }, function (err) {
-						if (err) throw err;
+		// Verify db
+		const { rows } = await db.query('SELECT * FROM sessions WHERE uuid = ?;', [sessionUuid]);
+		assert.strictEqual(JSON.parse(rows[0].json), 'first data');
 
-						// Verify that session is deleted
-						db.query('SELECT * FROM sessions WHERE uuid = ?', [sessionUuid], function (err, result) {
-							assert.strictEqual(JSON.parse(result[0].json), 'updated data');
+		// Update session with new data
+		testSessionData = 'updated data';
+		await axios('http://localhost:' + context.port, {jar});
 
-							done();
-						});
-					});
-				});
-			});
-		});
+		// Verify that session is updated in db
+		const { rows: rowsAfterUpdate } = await db.query('SELECT * FROM sessions WHERE uuid = ?', [sessionUuid]);
+		assert.strictEqual(JSON.parse(rowsAfterUpdate[0].json), 'updated data');
 	});
 
-	it('Should remove old sessions on demand', function (done) {
-		const jar = request.jar();
-		const session = new Session({'db': db, 'log': log, 'deleteKeepDays': 1});
-		let testSessionData = 'remove on demand test data';
+	it('Session data should be loaded into req object', async () => {
+		const jar = new CookieJar();
+		const session = new Session({db: db, log: log});
 
-		// eslint-disable-next-line require-jsdoc
-		function getSessionData() {
-			return testSessionData;
-		}
-
-		createWebServer({ session, 'sessionData': getSessionData }, context => {
-			// Create session
-			request('http://localhost:' + context.port, { jar }, function (err) {
-				if (err) throw err;
-				db.query('SELECT * FROM sessions WHERE json = \'"remove on demand test data"\'', function (err, result) {
-					if (err) throw err;
-					assert.strictEqual(JSON.parse(result[0].json), 'remove on demand test data');
-
-					// Hack to make a session old
-					const expiredDate = DateTime
-						.utc()
-						.minus({'days': 2})
-						.toISODate();
-
-					let expireSessionSql = `UPDATE sessions SET updated = '${expiredDate}'
-											WHERE json = '"remove on demand test data"'`;
-
-					db.query(expireSessionSql, function (err) {
-						if (err) throw err;
-
-						// Delete old sessions
-						session.deleteOldSessions(function (err) {
-							if (err) throw err;
-
-							// Verify that session is deleted
-							db.query('SELECT * FROM sessions WHERE json = \'"remove on demand test data"\'', function (err, result) {
-								assert.strictEqual(result.length, 0);
-
-								done();
-							});
-						});
-					});
-				});
-			});
-		});
-	});
-
-	it('Should remove old sessions on write', function (done) {
-		const jar = request.jar();
-		const session = new Session({'db': db, 'log': log, 'deleteKeepDays': 1});
-		let testSessionData = 'remove on delete data';
-
-		// eslint-disable-next-line require-jsdoc
-		function getSessionData() {
-			return testSessionData;
-		}
-
-		createWebServer({ session, 'sessionData': getSessionData }, context => {
-			// Create session
-			request('http://localhost:' + context.port, { jar }, function (err) {
-				if (err) throw err;
-				db.query('SELECT * FROM sessions WHERE json = \'"remove on delete data"\'', function (err, result) {
-					if (err) throw err;
-					assert.strictEqual(JSON.parse(result[0].json), 'remove on delete data');
-
-					// Hack to make a session old
-					const expiredDate = DateTime
-						.utc()
-						.minus({'days': 2})
-						.toISODate();
-
-					let expireSessionSql = `UPDATE sessions SET updated = '${expiredDate}'
-											WHERE json = '"remove on delete data"'`;
-
-					db.query(expireSessionSql, function (err) {
-						if (err) throw err;
-
-						// Delete old sessions on next write (another session)
-						testSessionData = 'another session that should delete the first one';
-						request('http://localhost:' + context.port, { 'jar': request.jar() }, function (err) {
-							if (err) throw err;
-
-							// Verify that session is deleted (deletion is async so can take a while)
-							async.retry({ 'times': 100, 'interval': 100 }, function (cb) {
-								db.query('SELECT * FROM sessions WHERE json = \'"remove on delete data"\'', function (err, result) {
-									if (result.length !== 0) {
-										return cb(new Error('Session has not been removed'));
-									}
-
-									cb();
-								});
-							}, function (err) {
-								if (err) throw err;
-
-								done();
-							});
-						});
-					});
-				});
-			});
-		});
-	}).timeout(10000);
-
-	it('Creates a session cookie in the response with proper attributes', function (done) {
-		const session = new Session({'db': db, 'log': log, 'cookieSameSite': 'none', 'cookieSecure': false});
-		const jar = request.jar();
-
-		createWebServer({ session }, context => {
-			request('http://localhost:' + context.port, { jar }, function (err, res) {
-				if (err) throw err;
-
-				assert.ok(res.headers['set-cookie']);
-				assert.strictEqual(res.headers['set-cookie'].length, 1);
-
-				const cookieStr = res.headers['set-cookie'][0];
-				const cookieValues = cookieStr
-					.split(';')
-					.map(keyValueStr => keyValueStr.split('='))
-					.reduce((result, keyValueArr) => {
-						result[keyValueArr[0].trim()] = keyValueArr[1] || true;
-
-						return result;
-					}, {});
-
-				console.log(`Cookie: ${cookieStr}`);
-
-				assert.strictEqual(Object.keys(cookieValues).length, 4);
-
-				const session = cookieValues.session;
-				const path = cookieValues.path;
-				const httpOnly = cookieValues.httponly;
-				const sameSite = cookieValues.samesite;
-				const secure = cookieValues.secure;
-
-				assert.ok(uuid.validate(session));
-				assert.strictEqual(path, '/');
-				assert.strictEqual(httpOnly, true);
-				assert.strictEqual(sameSite, 'none');
-				assert.strictEqual(secure, undefined);
-
-				done();
-			});
-		});
-	});
-
-	it('Having session set to something that is not in db should result in new session value in response', function (done) {
-		const jar = request.jar();
-		const requestSessionUuid = uuid.v4();
-		const headers = {
-			'Cookie': `session=${requestSessionUuid}`
+		// First the middleware should store some session data
+		let middleware = (req, res, cb) => {
+			req.session.data = 'session data value';
+			res.end();
+			cb();
 		};
 
-		createWebServer(context => {
-			request('http://localhost:' + context.port, { headers, jar }, function (err, res) {
-				if (err) throw err;
+		const context = await createWebServer({ session, middleware: (req, res, cb) => middleware(req, res, cb) });
 
-				assert.ok(res.headers['set-cookie']);
-				assert.strictEqual(res.headers['set-cookie'].length, 1);
+		// Create session
+		await axios('http://localhost:' + context.port, {jar});
 
-				const cookieStr = res.headers['set-cookie'][0];
-				const cookieValues = cookieStr
-					.split(';')
-					.map(keyValueStr => keyValueStr.split('='))
-					.reduce((result, keyValueArr) => {
-						result[keyValueArr[0].trim()] = keyValueArr[1] || true;
+		// Now middleware should verify that the session data is loaded
+		let loadedSessionData = '';
+		middleware = (req, res, cb) => {
+			loadedSessionData = req.session.data;
+			res.end();
+			cb();
+		};
 
-						return result;
-					}, {});
+		await axios('http://localhost:' + context.port, {jar});
 
-				console.log(`Cookie: ${cookieStr}`);
+		assert.strictEqual(loadedSessionData, 'session data value');
+	});
 
-				assert.strictEqual(Object.keys(cookieValues).length, 3);
+	it('Should remove old sessions on demand', async () => {
+		const session = new Session({db: db, log: log, deleteKeepDays: 1, deleteOnWrite: false});
+		let testSessionData = 'remove on demand test data';
 
-				const session = cookieValues.session;
+		function sessionData() {
+			return testSessionData;
+		}
 
-				assert.ok(uuid.validate(session));
-				assert.notStrictEqual(uuid, requestSessionUuid);
+		const context = await createWebServer({ session, sessionData });
+		// Create session
+		await axios('http://localhost:' + context.port);
+		const { rows } = await db.query('SELECT * FROM sessions WHERE json = \'"remove on demand test data"\'');
+		assert.strictEqual(JSON.parse(rows[0].json), 'remove on demand test data');
 
-				done();
-			});
+		// Hack to make a session old
+		const expiredDate = DateTime
+			.utc()
+			.minus({days: 2})
+			.toISODate();
+
+		let expireSessionSql = `UPDATE sessions SET updated = '${expiredDate}'
+								WHERE json = '"remove on demand test data"'`;
+
+		await db.query(expireSessionSql);
+
+		// Delete old sessions
+		await session.deleteOldSessions();
+
+		// Verify that session is deleted
+		const { rows: rowsAfterDelete } = await db.query('SELECT * FROM sessions WHERE json = \'"remove on demand test data"\'');
+		assert.strictEqual(rowsAfterDelete.length, 0);
+	});
+
+	it('Should remove old sessions on write', async () => {
+		const session = new Session({db: db, log: log, deleteKeepDays: 1});
+		let testSessionData = 'remove on delete data';
+
+		function sessionData() {
+			return testSessionData;
+		}
+
+		const context = await createWebServer({ session, sessionData });
+
+		// Create session
+		await axios('http://localhost:' + context.port);
+		const { rows } = await db.query('SELECT * FROM sessions WHERE json = \'"remove on delete data"\'');
+		assert.strictEqual(JSON.parse(rows[0].json), 'remove on delete data');
+
+		// Hack to make a session old
+		const expiredDate = DateTime
+			.utc()
+			.minus({days: 2})
+			.toISODate();
+
+		let expireSessionSql = `UPDATE sessions SET updated = '${expiredDate}'
+								WHERE json = '"remove on delete data"'`;
+
+		await db.query(expireSessionSql);
+
+		// Delete old sessions on next write (another session)
+		testSessionData = 'another session that should delete the first one';
+		await axios('http://localhost:' + context.port);
+
+		// Verify that session is deleted (deletion is async so can take a while)
+		await async.retry({ times: 100, interval: 100 }, async () => {
+			const { rows } = await db.query('SELECT * FROM sessions WHERE json = \'"remove on delete data"\'');
+			if (rows.length !== 0) {
+				throw new Error('Session has not been removed');
+			}
 		});
+	});
+
+	it('Creates a session cookie in the response with proper attributes', async () => {
+		const session = new Session({db: db, log: log, cookieSameSite: 'none', cookieSecure: false});
+
+		const context = await createWebServer({ session });
+		const res = await axios('http://localhost:' + context.port);
+		assert.ok(res.headers['set-cookie']);
+		assert.strictEqual(res.headers['set-cookie'].length, 1);
+
+		const cookieStr = res.headers['set-cookie'][0];
+		const cookieValues = cookieStr
+			.split(';')
+			.map(keyValueStr => keyValueStr.split('='))
+			.reduce((result, keyValueArr) => {
+				result[keyValueArr[0].trim()] = keyValueArr[1] || true;
+
+				return result;
+			}, {});
+
+		console.log(`Cookie: ${cookieStr}`);
+
+		assert.strictEqual(Object.keys(cookieValues).length, 4);
+
+		const sessionUuid = cookieValues.session;
+		const path = cookieValues.path;
+		const httpOnly = cookieValues.httponly;
+		const sameSite = cookieValues.samesite;
+		const secure = cookieValues.secure;
+
+		assert.ok(uuid.validate(sessionUuid));
+		assert.strictEqual(path, '/');
+		assert.strictEqual(httpOnly, true);
+		assert.strictEqual(sameSite, 'none');
+		assert.strictEqual(secure, undefined);
+	});
+
+	it('Having session set to something that is not in db should result in new session value in response', async () => {
+		const requestSessionUuid = uuid.v4();
+		const headers = {
+			Cookie: `session=${requestSessionUuid}`,
+		};
+
+		const context = await createWebServer();
+
+		const res = await axios('http://localhost:' + context.port, { headers });
+		assert.ok(res.headers['set-cookie']);
+		assert.strictEqual(res.headers['set-cookie'].length, 1);
+
+		const cookieStr = res.headers['set-cookie'][0];
+		const cookieValues = cookieStr
+			.split(';')
+			.map(keyValueStr => keyValueStr.split('='))
+			.reduce((result, keyValueArr) => {
+				result[keyValueArr[0].trim()] = keyValueArr[1] || true;
+
+				return result;
+			}, {});
+
+		console.log(`Cookie: ${cookieStr}`);
+
+		assert.strictEqual(Object.keys(cookieValues).length, 3);
+
+		const session = cookieValues.session;
+
+		assert.ok(uuid.validate(session));
+		assert.notStrictEqual(uuid, requestSessionUuid);
+	});
+
+	it('should destroy session and not load data to req object on next request', async () => {
+		const jar = new CookieJar();
+		const session = new Session({db: db, log: log});
+
+		// First the middleware should store some session data
+		let middleware = (req, res, cb) => {
+			req.session.data = 'session data value';
+			res.end();
+			cb();
+		};
+
+		const context = await createWebServer({ session, middleware: (req, res, cb) => middleware(req, res, cb) });
+
+		// Create session
+		await axios('http://localhost:' + context.port, {jar});
+
+		// Destroy session
+		middleware = async (req, res, cb) => {
+			await req.session.destroy();
+			res.end();
+			cb();
+		};
+
+		await axios('http://localhost:' + context.port, {jar});
+
+		// Verify that session has been destroyed
+		let loadedSessionData = '';
+		middleware = (req, res, cb) => {
+			loadedSessionData = req.session.data;
+			res.end();
+			cb();
+		};
+
+		await axios('http://localhost:' + context.port, {jar});
+
+		assert.deepStrictEqual(loadedSessionData, {});
+	});
+
+	it('should save the same session data twice (should be optimized to not db write second time)', async () => {
+		const jar = new CookieJar();
+		const session = new Session({db: db, log: log});
+
+		// Middleware that stores some session data
+		let middleware = (req, res, cb) => {
+			req.session.data = { asdf: 'session data value' };
+			res.end();
+			cb();
+		};
+
+		const context = await createWebServer({ session, middleware: (req, res, cb) => middleware(req, res, cb) });
+
+		// Create session
+		await axios('http://localhost:' + context.port, {jar});
+
+		// Write same data again
+		await axios('http://localhost:' + context.port, {jar});
+
+		// Verify session data
+		let loadedSessionData = '';
+		middleware = (req, res, cb) => {
+			loadedSessionData = req.session.data;
+			res.end();
+			cb();
+		};
+
+		await axios('http://localhost:' + context.port, {jar});
+
+		assert.deepStrictEqual(loadedSessionData, { asdf: 'session data value' });
 	});
 });
 
-describe('With sessionExpire set to 30 days', function () {
-	const sessionExpire = 30;
-	const expireSession  = new Session({'db': db, 'log': log, 'sessionExpire': sessionExpire});
+describe('With sessionExpire set to 30 days', () => {
+	it('Check that the session cookie expires in 30 days', async () => {
+		const sessionExpire = 30;
+		const expireSession = new Session({db, log, sessionExpire: sessionExpire});
+		const context = await createWebServer({ session: expireSession });
+		const response = await axios('http://localhost:' + context.port);
+		const cookie = response.headers['set-cookie'][0];
+		const splitCookie = cookie.split(';');
 
-	it('Check that the session cookie expires in 30 days', function (done) {
-		createWebServer({ 'session': expireSession }, context => {
-			request('http://localhost:' + context.port, function (err, response) {
-				if (err) throw err;
+		for (const sc of splitCookie) {
+			if (sc.trim().startsWith('expires')) {
+				const expires = sc.replace('expires=', '').trim();
+				const dateExpires = new Date(expires);
+				const dateNow = new Date();
+				const difference = dateExpires.getTime() - dateNow.getTime();
+				const days = Math.ceil(difference / (1000 * 3600 * 24));
 
-				const cookie = response.headers['set-cookie'][0];
-				const splitCookie = cookie.split(';');
-
-				for (const sc of splitCookie) {
-					if (sc.trim().startsWith('expires')) {
-						const expires = sc.replace('expires=', '').trim();
-						const dateExpires = new Date(expires);
-						const dateNow = new Date();
-						const difference = dateExpires.getTime() - dateNow.getTime();
-						const days = Math.ceil(difference / (1000 * 3600 * 24));
-
-						assert.strictEqual(days, sessionExpire);
-					}
-				}
-
-				done();
-			});
-		});
+				assert.strictEqual(days, sessionExpire);
+			}
+		}
 	});
 });

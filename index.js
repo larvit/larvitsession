@@ -1,311 +1,247 @@
 'use strict';
 
+const { Log } = require('larvitutils');
+const { DbMigration } = require('larvitdbmigration');
+const uuidLib = require('uuid');
+
 const topLogPrefix = 'larvitsession: index.js - ';
-const DbMigration  = require('larvitdbmigration');
-const cookieName   = 'session';
-const validate     = require('uuid-validate');
-const uuidLib      = require('uuid');
-const LUtils       = require('larvitutils');
-const Events       = require('events');
+const cookieName = 'session';
 
-/**
- *
- * @param {obj} options {
- * 	'db': instance of db object
- * 	'deleteLimit': limit number of delete during cleanup of old sessions
- * 	'deleteKeepDays': number of days to keep during cleanup of old sessions
- * 	'deleteOnWrite': boolean that tells if old sessions should be deleted on write, defaults to true.
- * 	'sessionExpire': number of days to keep the session cookie alive. Expire will be set to 'session' if undefined
- * 	'cookieSameSite': string that sets the SameSite session cookie option, defaults to not being set at all (browser will default). 'strict', 'lax', 'none', 'false' or 'true' (maps to strict).
- * 	'cookieSecure': boolean that sets the secure session cookie option. Defaults to false for http and true for https if not set.
- *
- * // Optional
- * 	'log': instance of log object
- * }
- */
-function Session(options) {
-	const that = this;
-
-	that.options      = options || {};
-	that.eventEmitter = new Events();
-
-	if (! that.options.log) {
-		const lUtils = new LUtils();
-
-		that.options.log = new lUtils.Log();
-	}
-
-	if (! options.db) {
-		throw new Error('Required options "db" is missing');
-	}
-
-	that.log = that.options.log;
-	that.db  = that.options.db;
-	that.deleteLimit = options.deleteLimit || 100;
-	that.deleteKeepDays = options.deleteKeepDays || 10;
-	that.deleteOnWrite = options.deleteOnWrite === undefined ? true : options.deleteOnWrite;
-	that.sessionExpire = options.sessionExpire;
-	that.cookieSameSite = options.cookieSameSite;
-	that.cookieSecure = options.cookieSecure;
-}
-
-Session.prototype.ready = function ready(cb) {
-	const logPrefix = topLogPrefix + 'ready() - ';
-	const options   = {};
-	const that      = this;
-
-	let dbMigration;
-
-	if (typeof cb !== 'function') {
-		cb = function () {};
-	}
-	if (that.isReady === true) return cb();
-
-	if (that.readyInProgress === true) {
-		that.eventEmitter.on('ready', cb);
-
-		return;
-	}
-
-	that.readyInProgress = true;
-
-	that.log.debug(logPrefix + 'Waiting for dbmigration()');
-
-	options.dbType               = 'mariadb';
-	options.dbDriver             = that.db;
-	options.tableName            = 'sessions_db_version';
-	options.migrationScriptsPath = __dirname + '/dbmigration';
-	options.log                  = that.log;
-	dbMigration                  = new DbMigration(options);
-
-	dbMigration.run(function (err) {
-		if (err) {
-			that.log.error(topLogPrefix + err.message);
-
-			return;
-		}
-
-		that.isReady         = true;
-		that.readyInProgress = false;
-		that.eventEmitter.emit('ready');
-
-		cb(err);
-	});
-};
-
-Session.prototype.start = function start(req, res, cb) {
-	const logPrefix = topLogPrefix + 'start() - ';
-	const that      = this;
-
-	const cookieOptions = {
-		'sameSite':  that.cookieSameSite,
-		'secure':    that.cookieSecure,
-		'overwrite': true
-	};
-
-	if (that.sessionExpire) {
-		const d = new Date();
-
-		d.setTime(d.getTime() + (that.sessionExpire * 24 * 60 * 60 * 1000));
-		cookieOptions['expires'] = d;
-	}
+class Session {
 
 	/**
-	 * Get session key and data from cookie and database or create new if it was missing either in cookie or database
-	 * Will set the sessionKey in the outer scope
 	 *
-	 * @param {func} cb(err)
-	 * @returns {func} self
+	 * @param {obj} options {
+	 * 'db': instance of db object
+	 * 'deleteLimit': limit number of delete during cleanup of old sessions
+	 * 'deleteKeepDays': number of days to keep during cleanup of old sessions
+	 * 'deleteOnWrite': boolean that tells if old sessions should be deleted on write, defaults to true.
+	 * 'sessionExpire': number of days to keep the session cookie alive. Expire will be set to 'session' if undefined
+	 * 'cookieSameSite': string that sets the SameSite session cookie option, defaults to not being set at all (browser will default). 'strict', 'lax', 'none', 'false' or 'true' (maps to strict).
+	 * 'cookieSecure': boolean that sets the secure session cookie option. Defaults to false for http and true for https if not set.
+	 *
+	 * // Optional
+	 * 'log': instance of log object
+	 * }
 	 */
-	function getSession(cb) {
-		const subLogPrefix = logPrefix + 'getSession() - ';
-		const dbFields     = [];
-		const sql          = 'SELECT json FROM sessions WHERE uuid = ?';
+	constructor(options) {
+		// istanbul ignore if
+		if (!options.db) {
+			throw new Error('Required options "db" is missing');
+		}
 
-		that.log.silly(subLogPrefix + 'Running');
+		// istanbul ignore next
+		this.log = options.log || new Log();
+		this.db = options.db;
+		this.deleteLimit = options.deleteLimit || 100;
+		this.deleteKeepDays = options.deleteKeepDays || 10;
+		this.deleteOnWrite = options.deleteOnWrite === undefined ? true : options.deleteOnWrite;
+		this.sessionExpire = options.sessionExpire;
+		this.cookieSameSite = options.cookieSameSite;
+		this.cookieSecure = options.cookieSecure;
+	}
 
-		// If sessionKey is not yet defined, try to get it from the cookies
-		if (req.session.key === undefined) {
-			that.log.silly(subLogPrefix + 'No sessionKey found, trying to get one');
+	async runDbMigrations() {
+		const options = {};
+		options.dbType = 'mariadb';
+		options.dbDriver = this.db;
+		options.tableName = 'sessions_db_version';
+		options.migrationScriptsPath = __dirname + '/dbmigration';
+		options.log = this.log;
+		const dbMigration = new DbMigration(options);
 
-			req.session.key = req.cookies.get(cookieName);
+		await dbMigration.run();
+	}
 
-			if (! validate(req.session.key, 4)) {
-				delete req.session.key;
+	async start(req, res, cb) {
+		const logPrefix = topLogPrefix + 'start() - ';
+
+		const cookieOptions = {
+			sameSite: this.cookieSameSite,
+			secure: this.cookieSecure,
+			overwrite: true,
+		};
+
+		if (this.sessionExpire) {
+			const d = new Date();
+
+			d.setTime(d.getTime() + (this.sessionExpire * 24 * 60 * 60 * 1000));
+			cookieOptions['expires'] = d;
+		}
+
+		/**
+		 * Get session key and data from cookie and database or create new if it was missing either in cookie or database
+		 * Will set the sessionKey in the outer scope
+		 *
+		 */
+		const getSession = async () => {
+			const subLogPrefix = logPrefix + 'getSession() - ';
+			const dbFields = [];
+			const sql = 'SELECT json FROM sessions WHERE uuid = ?';
+
+			this.log.silly(subLogPrefix + 'Running');
+
+			// If sessionKey is not yet defined, try to get it from the cookies
+			if (req.session.key === undefined) {
+				this.log.silly(subLogPrefix + 'No sessionKey found, trying to get one');
+
+				req.session.key = req.cookies.get(cookieName);
+
+				if (!uuidLib.validate(req.session.key)) {
+					delete req.session.key;
+				}
+
+				this.log.silly(subLogPrefix + 'sessionKey loaded from cookie: "' + req.session.key + '"');
 			}
 
-			that.log.silly(subLogPrefix + 'sessionKey loaded from cookie: "' + req.session.key + '"');
-		}
+			// If the cookies did not know of the session key either, create a new one!
+			if (req.session.key === undefined) {
+				this.log.silly(subLogPrefix + 'sessionKey is undefined, set a new, random uuid');
 
-		// If the cookies did not know of the session key either, create a new one!
-		if (req.session.key === undefined) {
-			that.log.silly(subLogPrefix + 'sessionKey is undefined, set a new, random uuid');
+				req.session.key = uuidLib.v4();
+				req.cookies.set(cookieName, req.session.key, cookieOptions);
 
-			req.session.key	= uuidLib.v4();
+				return;
+			}
+
 			req.cookies.set(cookieName, req.session.key, cookieOptions);
 
-			return cb();
-		}
+			this.log.silly(subLogPrefix + 'A session key was found, validate it and load from database');
 
-		req.cookies.set(cookieName, req.session.key, cookieOptions);
+			dbFields.push(req.session.key);
 
-		that.log.silly(subLogPrefix + 'A session key was found, validate it and load from database');
-
-		dbFields.push(req.session.key);
-
-		that.db.query(sql, dbFields, function (err, rows) {
-			if (err) return cb(err);
+			const { rows } = await this.db.query(sql, dbFields);
 
 			if (rows.length === 0) {
 				// This might be OK since it might have been cleared on an earlier call. Good to log, but no need to scream. :)
-				that.log.verbose(subLogPrefix + 'No session data found for key with uuid: "' + req.session.key + '"');
+				this.log.verbose(subLogPrefix + 'No session data found for key with uuid: "' + req.session.key + '"');
 
 				// Always set a new, random uuid to make sure no one manually sets their own session uuid to spoof the system
 				req.session.key = uuidLib.v4();
 				req.cookies.set(cookieName, req.session.key, cookieOptions);
 
-				return cb();
+				return;
 			}
 
-			req.session.startData	= rows[0].json;
+			req.session.startData = String(rows[0].json);
 
 			// Database information found, load them  up
 			try {
-				req.session.data	= JSON.parse(rows[0].json);
-			} catch (err) {
-				that.log.error(subLogPrefix + 'Invalid session data found in database! uuid: "' + req.session.key + '"');
-
-				return cb(err);
+				req.session.data = JSON.parse(rows[0].json);
+			} catch (err) /* istanbul ignore next */ {
+				this.log.error(subLogPrefix + 'Invalid session data found in database! uuid: "' + req.session.key + '"');
+				throw err;
 			}
 
-			that.log.debug(subLogPrefix + 'Fetched data from database: ' + rows[0].json);
+			this.log.debug(subLogPrefix + 'Fetched data from database: ' + rows[0].json);
+		};
 
-			cb();
-		});
-	}
+		// Initiate req.session
+		req.session = {data: {}};
 
-	// Initiate req.session
-	req.session = {'data': {}};
+		// istanbul ignore if
+		if (req.cookies === undefined || res.cookies === undefined) {
+			const err = new Error('Can not find required cookies object on req or res object. Please load https://github.com/pillarjs/cookies into req.cookies');
+			this.log.error(logPrefix + err.message);
 
-	if (req.cookies === undefined || res.cookies === undefined) {
-		const	err	= new Error('Can not find required cookies object on req or res object. Please load https://github.com/pillarjs/cookies into req.cookies');
-
-		that.log.error(logPrefix + err.message);
-
-		return cb(err);
-	}
-
-	/**
-	 * Destroy session - remove data from database and delete session cookie
-	 *
-	 * @param {func} cb(err)
-	 * @returns {func} cb
-	 */
-	req.session.destroy = function destroy(cb) {
-		const dbFields = [];
-		const sql      = 'DELETE FROM sessions WHERE uuid = ?';
-
-		if (typeof cb !== 'function') {
-			cb = function () {};
+			return cb(err);
 		}
 
-		req.session.key	= req.cookies.get(cookieName);
+		/**
+		 * Destroy session - remove data from database and delete session cookie
+		 */
+		req.session.destroy = async () => {
+			const dbFields = [];
+			const sql = 'DELETE FROM sessions WHERE uuid = ?';
 
-		if (req.session.key === undefined || ! validate(req.session.key, 4)) {
-			req.session = {'data': {}};
+			req.session.key = req.cookies.get(cookieName);
 
-			return cb();
-		}
+			// istanbul ignore if
+			if (req.session.key === undefined || !uuidLib.validate(req.session.key)) {
+				req.session = {data: {}};
 
-		dbFields.push(req.session.key);
+				return;
+			}
 
-		that.db.query(sql, dbFields, function (err) {
-			if (err) return cb(err);
+			dbFields.push(req.session.key);
 
+			await this.db.query(sql, dbFields);
 			// Remove the cookie
 			// "If the value is omitted, an outbound header with an expired date is used to delete the cookie."
 			req.cookies.set(cookieName);
-			req.session = {'data': {}};
+			req.session = {data: {}};
+		};
 
-			cb();
-		});
+		try {
+			await getSession();
+		} catch (err) /* istanbul ignore next */ {
+			return cb(err);
+		}
+
+		cb();
 	};
 
-	// Load session by default
-	that.ready(function (err) {
-		if (err) return cb(err);
-		getSession(cb);
-	});
-};
+	async writeToDb(req, res, cb) {
+		const logPrefix = topLogPrefix + 'writeToDb() - ';
+		const dbFields = [];
+		const sql = 'INSERT INTO sessions (uuid, json) VALUES(?,?) ON DUPLICATE KEY UPDATE json = VALUES(json)';
 
-Session.prototype.writeToDb = function writeToDb(req, res, cb) {
-	const logPrefix = topLogPrefix + 'writeToDb() - ';
-	const dbFields  = [];
-	const that      = this;
-	const sql       = 'INSERT INTO sessions (uuid, json) VALUES(?,?) ON DUPLICATE KEY UPDATE json = VALUES(json)';
+		try {
+			dbFields.push(req.session.key);
+			dbFields.push(JSON.stringify(req.session.data));
+		} catch (err) /* istanbul ignore next */ {
+			this.log.error(logPrefix + err.message);
 
-	try {
-		dbFields.push(req.session.key);
-		dbFields.push(JSON.stringify(req.session.data));
-	} catch (err) {
-		that.log.error(logPrefix + err.message);
-
-		return cb(err);
-	}
-
-	that.ready(function (err) {
-		if (err) return cb(err);
+			return cb(err);
+		}
 
 		if (dbFields[1] === '{}') {
-			that.log.debug(logPrefix + 'Empty session data, remove completely from database not to waste space');
-			that.db.query('DELETE FROM sessions WHERE uuid = ?', [req.session.key], cb);
+			this.log.debug(logPrefix + 'Empty session data, remove completely from database not to waste space');
+			await this.db.query('DELETE FROM sessions WHERE uuid = ?', [req.session.key]);
 
-			return;
-		} else if (! validate(req.session.key, 4)) {
+			return cb();
+		} else if (!uuidLib.validate(req.session.key)) /* istanbul ignore next */ {
 			const err = new Error('Invalid session key');
 
-			that.log.info(logPrefix + err.message);
+			this.log.info(logPrefix + err.message);
 
 			return cb(err);
 		}
 
 		if (dbFields[1] === req.session.startData) {
-			that.log.debug(logPrefix + 'Session data is not different from database, do not rewrite it');
+			this.log.debug(logPrefix + 'Session data is not different from database, do not rewrite it');
 
 			return cb();
 		}
 
-		that.db.query(sql, dbFields, function (err) {
-			cb(err);
+		try {
+			await this.db.query(sql, dbFields);
+			cb();
+		} catch (err) /* istanbul ignore next */ {
+			return cb(err);
+		}
 
-			if (that.deleteOnWrite) {
-				that.deleteOldSessions(function () {});
-			}
-		});
-	});
-};
+		if (this.deleteOnWrite) {
+			this.deleteOldSessions();
+		}
+	};
 
-Session.prototype.deleteOldSessions = function deleteOldSessions(cb) {
-	const logPrefix = topLogPrefix + 'deleteOldSessions() -';
-	const that      = this;
+	async deleteOldSessions() {
+		const logPrefix = topLogPrefix + 'deleteOldSessions() -';
 
-	let sql = `DELETE FROM sessions WHERE updated < DATE_SUB(NOW(), INTERVAL ${that.deleteKeepDays} DAY)`;
+		let sql = `DELETE FROM sessions WHERE updated < DATE_SUB(NOW(), INTERVAL ${this.deleteKeepDays} DAY)`;
 
-	if (that.deleteLimit) {
-		sql += ` LIMIT ${that.deleteLimit}`;
-	}
+		if (this.deleteLimit) {
+			sql += ` LIMIT ${this.deleteLimit}`;
+		}
 
-	sql += ';';
+		sql += ';';
 
-	that.log.debug(`${logPrefix} Deleting old sessions, deleteKeepDays: ${that.deleteKeepDays}, deleteLimit: ${that.deleteLimit}`);
+		this.log.debug(`${logPrefix} Deleting old sessions, deleteKeepDays: ${this.deleteKeepDays}, deleteLimit: ${this.deleteLimit}`);
 
-	that.db.query(sql, function (err, result) {
-		if (err) return cb(err);
-
-		that.log.verbose(`${logPrefix} ${result.affectedRows} old session(s) deleted`);
-
-		cb();
-	});
-};
+		const {rows} = await this.db.query(sql);
+		this.log.verbose(`${logPrefix} ${rows.affectedRows} old session(s) deleted`);
+	};
+}
 
 exports = module.exports = Session;
