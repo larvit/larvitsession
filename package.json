@@ -17,7 +17,7 @@
   "devDependencies": {
     "async": "3.2.3",
     "axios": "0.26.0",
-    "axios-cookiejar-support": "2.0.3",
+    "axios-cookiejar-support": "2.0.4",
     "cookies": "0.8.0",
     "eslint": "8.10.0",
     "freeport": "1.0.5",
