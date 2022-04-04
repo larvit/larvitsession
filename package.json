@@ -10,7 +10,7 @@
   "dependencies": {
     "larvitdb": "3.2.3",
     "larvitdbmigration": "6.1.2",
-    "larvitutils": "5.0.3",
+    "larvitutils": "5.0.4",
     "uuid": "8.3.2"
   },
   "description": "Session handling module for node.js",
