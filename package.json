@@ -1,6 +1,6 @@
 {
   "name": "larvitsession",
-  "version": "6.0.0",
+  "version": "6.0.1",
   "author": {
     "name": "Mikael 'Lilleman' Göransson",
     "email": "lilleman@larvit.se",
@@ -9,7 +9,7 @@
   "contributors": [],
   "dependencies": {
     "larvitdb": "3.2.3",
-    "larvitdbmigration": "6.1.2",
+    "larvitdbmigration": "7.0.0",
     "larvitutils": "5.0.4",
     "uuid": "8.3.2"
   },
