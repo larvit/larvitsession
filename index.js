@@ -53,6 +53,23 @@ class Session {
 		await dbMigration.run();
 	}
 
+	setSessionCookie(key, req) {
+		const cookieOptions = {
+			sameSite: this.cookieSameSite,
+			secure: this.cookieSecure,
+			overwrite: true,
+		};
+
+		if (this.sessionExpire) {
+			const d = new Date();
+
+			d.setTime(d.getTime() + (this.sessionExpire * 24 * 60 * 60 * 1000));
+			cookieOptions['expires'] = d;
+		}
+
+		req.cookies.set(cookieName, key, cookieOptions);
+	}
+
 	async start(req, res, cb) {
 		const logPrefix = topLogPrefix + 'start() - ';
 
@@ -242,6 +259,30 @@ class Session {
 		const {rows} = await this.db.query(sql);
 		this.log.verbose(`${logPrefix} ${rows.affectedRows} old session(s) deleted`);
 	};
+
+	async loadSession(key, req) {
+		const logPrefix = topLogPrefix + 'loadSession() - ';
+		const sql = 'SELECT json FROM sessions WHERE uuid = ?';
+
+		const { rows } = await this.db.query(sql, [key]);
+
+		if (!rows.length) {
+			this.log.verbose(logPrefix + 'No session data found for key with uuid: "' + key + '"');
+
+			return false;
+		}
+
+		const sessionDataStr = rows[0].json;
+		req.session.key = key;
+		req.session.startData = sessionDataStr;
+		req.session.data = JSON.parse(sessionDataStr);
+
+		this.setSessionCookie(key, req);
+
+		this.log.debug(`${logPrefix}Loaded session "${key}" from database: ${sessionDataStr}`);
+
+		return true;
+	}
 }
 
 exports = module.exports = Session;

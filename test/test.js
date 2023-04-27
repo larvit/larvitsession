@@ -394,6 +394,62 @@ describe('Basics', () => {
 	});
 });
 
+describe('loadSession', () => {
+	it('should be able to load a different session in middleware and set that in req and response cookie', async () => {
+		const jar = new CookieJar();
+		const otherJar = new CookieJar();
+		const session = new Session({db: db, log: log});
+		let firstSessionKey;
+
+		// First the middleware should store some session data in the first session
+		let middleware = (req, res, cb) => {
+			req.session.data = 'session data value';
+			firstSessionKey = req.session.key;
+			res.end();
+			cb();
+		};
+
+		const context = await createWebServer({ session, middleware: (req, res, cb) => middleware(req, res, cb) });
+
+		// Create first session
+		await axios('http://localhost:' + context.port, {jar});
+
+		// Another middleware not for the second request with a different session, load the first session
+		middleware = async (req, res, cb) => {
+			const loaded = await session.loadSession(firstSessionKey, req);
+
+			assert.ok(loaded, 'Session not loaded correctly');
+			assert.equal(req.session.key, firstSessionKey, 'Session key not loaded correctly');
+			assert.equal(req.session.data, 'session data value', 'Session data not loaded correctly');
+
+			res.end();
+			cb();
+		};
+
+		await axios('http://localhost:' + context.port, {jar: otherJar});
+
+		// Send another request with the seconda jar to verify that the loaded session was set in the reponse cookie
+		middleware = (req, res, cb) => {
+			assert.equal(req.session.key, firstSessionKey, 'Session key not correct in third request');
+			assert.equal(req.session.data, 'session data value', 'Session data not loaded correctly in third request');
+
+			res.end();
+			cb();
+		};
+
+		await axios('http://localhost:' + context.port, {jar: otherJar});
+	});
+
+	it('should fail to load if session key is not found', async () => {
+		const session = new Session({db: db, log: log});
+		const req = { session: {} };
+		const loaded = await session.loadSession('a key that does not exist', req);
+		assert.equal(loaded, false, 'Session should not have loaded');
+		assert.equal(req.session.key, undefined, 'Session should not have loaded any key');
+		assert.equal(req.session.data, undefined, 'Session should not have loaded any data');
+	});
+});
+
 describe('With sessionExpire set to 30 days', () => {
 	it('Check that the session cookie expires in 30 days', async () => {
 		const sessionExpire = 30;
