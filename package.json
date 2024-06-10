@@ -1,6 +1,6 @@
 {
   "name": "larvitsession",
-  "version": "6.1.37",
+  "version": "6.1.38",
   "author": {
     "name": "Mikael 'Lilleman' Göransson",
     "email": "lilleman@larvit.se",
@@ -11,7 +11,7 @@
     "larvitdb": "3.2.87",
     "larvitdbmigration": "7.0.109",
     "larvitutils": "5.1.91",
-    "uuid": "9.0.1"
+    "uuid": "10.0.0"
   },
   "description": "Session handling module for node.js",
   "devDependencies": {
