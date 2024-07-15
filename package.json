@@ -1,6 +1,6 @@
 {
   "name": "larvitsession",
-  "version": "6.1.43",
+  "version": "6.1.44",
   "author": {
     "name": "Mikael 'Lilleman' Göransson",
     "email": "lilleman@larvit.se",
@@ -9,7 +9,7 @@
   "contributors": [],
   "dependencies": {
     "larvitdb": "3.2.93",
-    "larvitdbmigration": "7.0.115",
+    "larvitdbmigration": "7.0.116",
     "larvitutils": "5.1.98",
     "uuid": "10.0.0"
   },
@@ -21,7 +21,7 @@
     "cookies": "0.9.1",
     "eslint": "8.57.0",
     "freeport": "1.0.5",
-    "larvitbase": "4.0.83",
+    "larvitbase": "4.0.84",
     "luxon": "3.4.4",
     "mocha": "10.6.0",
     "nyc": "17.0.0",
