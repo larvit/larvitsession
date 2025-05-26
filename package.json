@@ -1,6 +1,6 @@
 {
   "name": "larvitsession",
-  "version": "6.1.79",
+  "version": "6.1.80",
   "author": {
     "name": "Mikael 'Lilleman' Göransson",
     "email": "lilleman@larvit.se",
@@ -16,7 +16,7 @@
   "description": "Session handling module for node.js",
   "devDependencies": {
     "async": "3.2.6",
-    "axios": "1.7.3",
+    "axios": "1.8.2",
     "axios-cookiejar-support": "5.0.5",
     "cookies": "0.9.1",
     "eslint": "8.57.1",
