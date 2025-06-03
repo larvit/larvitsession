@@ -1,6 +1,6 @@
 {
   "name": "larvitsession",
-  "version": "6.2.0",
+  "version": "6.2.1",
   "author": {
     "name": "Mikael 'Lilleman' Göransson",
     "email": "lilleman@larvit.se",
@@ -19,7 +19,7 @@
     "axios": "1.8.2",
     "axios-cookiejar-support": "5.0.5",
     "cookies": "0.9.1",
-    "eslint": "8.57.1",
+    "eslint": "9.28.0",
     "freeport": "1.0.5",
     "larvitbase": "4.0.116",
     "luxon": "3.6.1",
