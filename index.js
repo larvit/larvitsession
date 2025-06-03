@@ -131,7 +131,7 @@ class Session {
 
 			if (rows.length === 0) {
 				// This might be OK since it might have been cleared on an earlier call. Good to log, but no need to scream. :)
-				this.log.verbose(subLogPrefix + 'No session data found for key with uuid: "' + req.session.key + '"');
+				this.log.debug(subLogPrefix + 'No session data found for key with uuid: "' + req.session.key + '"');
 
 				// Always set a new, random uuid to make sure no one manually sets their own session uuid to spoof the system
 				req.session.key = uuidLib.v4();
