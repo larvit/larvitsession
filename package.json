@@ -1,6 +1,6 @@
 {
   "name": "larvitsession",
-  "version": "6.2.8",
+  "version": "6.2.9",
   "author": {
     "name": "Mikael 'Lilleman' Göransson",
     "email": "lilleman@larvit.se",
@@ -25,7 +25,7 @@
     "luxon": "3.7.1",
     "mocha": "11.7.1",
     "nyc": "17.1.0",
-    "tough-cookie": "5.1.2"
+    "tough-cookie": "6.0.0"
   },
   "keywords": [
     "session"
