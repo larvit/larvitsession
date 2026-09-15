@@ -1,6 +1,6 @@
 {
   "name": "larvitsession",
-  "version": "6.2.39",
+  "version": "6.2.40",
   "author": {
     "name": "Mikael 'Lilleman' Göransson",
     "email": "lilleman@larvit.se",
@@ -23,7 +23,7 @@
     "freeport": "1.0.5",
     "larvitbase": "4.0.142",
     "luxon": "3.7.2",
-    "mocha": "11.8.0",
+    "mocha": "12.0.1",
     "nyc": "18.0.0",
     "tough-cookie": "6.0.2"
   },
